@@ -10,6 +10,10 @@ let activeFilter = 'all';
 let sidebarOpen = true;
 let selectedDuration = '10800';
 let draftDuration = '10800';
+let draftPairMode = 'all';
+let appliedPairMode = 'all';
+let draftAnchor = null;
+let appliedAnchor = null;
 let appliedViewMode = 'stats';
 let draftViewMode = 'stats';
 let pairGroupRanges = {}; // groupKey -> {ymin, ymax} per node-pair+type
@@ -164,10 +168,18 @@ function durationOptionsMarkup() {
 
 document.addEventListener('change', event => {
   if (event.target.id === 'durSelect') changeDuration(event.target.value);
+  if (event.target.id === 'pairMode') setPairMode(event.target.value);
   if (event.target.id === 'unifiedAxisToggle') setUnifiedYAxis(event.target.checked);
 });
 
 document.addEventListener('click', event => {
+  const anchor = event.target.closest('.node-anchor[data-anchor-node]');
+  if (anchor) {
+    event.preventDefault();
+    event.stopPropagation();
+    setAnchor(anchor.dataset.anchorNode);
+    return;
+  }
   const node = event.target.closest('.node[data-node-id]');
   if (node) return tog(node.dataset.nodeId);
   if (event.target.closest('[data-retry-nodes]')) return loadNodes();
@@ -240,6 +252,7 @@ function renderSidebar() {
   dns.forEach(n => { h += nodeRow(n); });
   h += '</div>';
   document.getElementById('sidebarInner').innerHTML = h;
+  updatePairingControls();
 }
 
 function nodeRow(n) {
@@ -255,7 +268,45 @@ function nodeRow(n) {
     <input type="checkbox" class="node-cb" id="c_${id}" data-id="${id}">
     <span class="node-label">${label}</span>
     ${meta}
+    <button class="node-anchor" type="button" data-anchor-node="${id}" aria-label="Use ${label} as fixed node" title="Use this node as the fixed node">Fix</button>
   </div>`;
+}
+
+function updatePairingControls() {
+  const sidebar = document.getElementById('sidebar');
+  const mode = document.getElementById('pairMode');
+  if (mode && mode.value !== draftPairMode) mode.value = draftPairMode;
+  sidebar?.classList.toggle('pairing-fixed-mode', draftPairMode === 'fixed');
+  document.querySelectorAll('.node[data-node-id]').forEach(row => {
+    const id = row.dataset.nodeId;
+    const selected = document.getElementById('c_' + id)?.checked === true;
+    const anchor = draftPairMode === 'fixed' && draftAnchor === id && selected;
+    const button = row.querySelector('.node-anchor');
+    row.classList.toggle('selection-anchorable', selected);
+    row.classList.toggle('anchor-on', anchor);
+    row.setAttribute('data-anchor', String(anchor));
+    if (button) {
+      button.disabled = !selected;
+      button.textContent = anchor ? 'Fixed' : 'Fix';
+      button.setAttribute('aria-pressed', String(anchor));
+    }
+  });
+}
+
+function setPairMode(mode) {
+  draftPairMode = mode === 'fixed' ? 'fixed' : 'all';
+  if (draftPairMode === 'all') draftAnchor = null;
+  updatePairingControls();
+  updSel();
+}
+
+function setAnchor(id) {
+  if (draftPairMode !== 'fixed') return;
+  const selected = document.getElementById('c_' + id)?.checked === true;
+  if (!selected) return;
+  draftAnchor = id;
+  updatePairingControls();
+  updSel();
 }
 
 function tog(id) {
@@ -264,6 +315,8 @@ function tog(id) {
   const row = document.getElementById('n_' + id);
   row.classList.toggle('on', c.checked);
   row.setAttribute('aria-checked', String(c.checked));
+  if (!c.checked && draftAnchor === id) draftAnchor = null;
+  updatePairingControls();
   draftSelection = readSidebarSelection();
   updSel();
 }
@@ -278,6 +331,8 @@ function selGrp(g, v) {
       row.setAttribute('aria-checked', String(!!v));
     }
   });
+  if (draftAnchor && !readSidebarSelection().includes(draftAnchor)) draftAnchor = null;
+  updatePairingControls();
   draftSelection = readSidebarSelection();
   updSel();
 }
@@ -298,15 +353,21 @@ function updSel() {
   const s = getSel();
   let pairs = 0;
   let message = '';
-  try {
-    pairs = makePairs(s).length;
-  } catch (error) {
-    message = error.message;
+  if (draftPairMode === 'fixed' && !draftAnchor) {
+    message = 'Choose a fixed node';
+  } else {
+    try {
+      pairs = makePairs(s, draftPairMode === 'fixed' ? draftAnchor : null).length;
+    } catch (error) {
+      message = error.message;
+    }
   }
   document.getElementById('goBtn').disabled = s.length < 2 || !!message;
   const pending = !selectionEquals(s, appliedSelection)
     || draftDuration !== selectedDuration
-    || draftViewMode !== appliedViewMode;
+    || draftViewMode !== appliedViewMode
+    || draftPairMode !== appliedPairMode
+    || (draftPairMode === 'fixed' ? draftAnchor : null) !== appliedAnchor;
   const submit = document.getElementById('goBtn');
   submit.classList.toggle('pending', pending);
   submit.setAttribute('data-pending', String(pending));
@@ -317,31 +378,32 @@ function updSel() {
       : `<b>${s.length}</b> nodes \u00b7 <b>${pairs}</b> results`;
 }
 
-function makePairs(sel) {
+function makePairs(sel, anchor = null) {
   if (sel.length > 20) throw new Error('Select no more than 20 nodes');
+  if (anchor && !sel.includes(anchor)) throw new Error('Fixed node must be part of the selection');
   const p = [];
-  for (let i = 0; i < sel.length; i++) {
-    for (let j = i + 1; j < sel.length; j++) {
-      const a = sel[i], b = sel[j];
-      const na = nodes.find(n => n.id === a), nb = nodes.find(n => n.id === b);
-      if (!na || !nb) continue;
-      if (na.group === 'dns' && nb.group === 'dns') continue;
-      if (na.group === 'dns' || nb.group === 'dns') {
-        const src = na.group === 'dns' ? b : a, tgt = na.group === 'dns' ? a : b;
-        p.push({ source: src, target: tgt, type: 'v4',
-          srcLabel: nodes.find(n=>n.id===src)?.label, tgtLabel: nodes.find(n=>n.id===tgt)?.label,
-          ext: true, pairKey: [a, b].join('_'), direction: 0 });
-      } else {
-        [{s:a,t:b},{s:b,t:a}].forEach(x => {
-          p.push({ source: x.s, target: x.t, type: 'v4',
+  const combinations = anchor
+    ? sel.filter(id => id !== anchor).map(id => [anchor, id])
+    : sel.flatMap((a, i) => sel.slice(i + 1).map(b => [a, b]));
+  for (const [a, b] of combinations) {
+    const na = nodes.find(n => n.id === a), nb = nodes.find(n => n.id === b);
+    if (!na || !nb) continue;
+    if (na.group === 'dns' && nb.group === 'dns') continue;
+    if (na.group === 'dns' || nb.group === 'dns') {
+      const src = na.group === 'dns' ? b : a, tgt = na.group === 'dns' ? a : b;
+      p.push({ source: src, target: tgt, type: 'v4',
+        srcLabel: nodes.find(n=>n.id===src)?.label, tgtLabel: nodes.find(n=>n.id===tgt)?.label,
+        ext: true, pairKey: [a, b].join('_'), direction: 0 });
+    } else {
+      [{s:a,t:b},{s:b,t:a}].forEach(x => {
+        p.push({ source: x.s, target: x.t, type: 'v4',
+          srcLabel: nodes.find(n=>n.id===x.s)?.label, tgtLabel: nodes.find(n=>n.id===x.t)?.label,
+          ext: false, pairKey: [a, b].join('_'), direction: x.s === a ? 0 : 1 });
+        if (na.v6 && nb.v6)
+          p.push({ source: x.s, target: x.t, type: 'v6',
             srcLabel: nodes.find(n=>n.id===x.s)?.label, tgtLabel: nodes.find(n=>n.id===x.t)?.label,
             ext: false, pairKey: [a, b].join('_'), direction: x.s === a ? 0 : 1 });
-          if (na.v6 && nb.v6)
-            p.push({ source: x.s, target: x.t, type: 'v6',
-              srcLabel: nodes.find(n=>n.id===x.s)?.label, tgtLabel: nodes.find(n=>n.id===x.t)?.label,
-              ext: false, pairKey: [a, b].join('_'), direction: x.s === a ? 0 : 1 });
-        });
-      }
+      });
     }
   }
   if (p.length > 500) throw new Error('Selection produces too many graphs');
@@ -717,7 +779,7 @@ function paintStatsCards(pairs, dur, generation, outcomes = new Map(), animate =
   requestAnimationFrame(paint);
 }
 
-async function refreshStatsBatch(nodeIds, pairs, dur, generation, signal) {
+async function refreshStatsBatch(nodeIds, pairs, dur, generation, signal, anchor = null) {
   const animateStats = generation !== suppressStatsAnimationGeneration;
   if (primeCardsFromCache(pairs, dur, animateStats)) {
     batchLoadingGeneration = -1;
@@ -745,7 +807,8 @@ async function refreshStatsBatch(nodeIds, pairs, dur, generation, signal) {
   let data;
   try {
     data = await fetchJson(requestUrl('/api/stats-batch.json', {
-      nodes: nodeIds.join(','), dur, w: graphSize.w, h: graphSize.h
+      nodes: nodeIds.join(','), dur, w: graphSize.w, h: graphSize.h,
+      ...(anchor ? { anchor } : {})
     }), signal, 30000);
     if (!data || !Array.isArray(data.items)) throw new Error('invalid batch response');
   } catch (error) {
@@ -782,6 +845,8 @@ async function showGraphs() {
   const firstResults = currentPairs.length === 0;
   const selectionChanged = !selectionEquals(sel, appliedSelection);
   const modeChanged = draftViewMode !== appliedViewMode;
+  const nextAnchor = draftPairMode === 'fixed' ? draftAnchor : null;
+  const pairingChanged = draftPairMode !== appliedPairMode || nextAnchor !== appliedAnchor;
   const generation = ++renderGeneration;
   if (activeController) activeController.abort();
   activeController = new AbortController();
@@ -794,7 +859,7 @@ async function showGraphs() {
   try {
     // The node list already contains every field needed to derive routes.
     // Avoid a redundant network round-trip before the first card can render.
-    nextPairs = makePairs(sel);
+    nextPairs = makePairs(sel, nextAnchor);
   } catch (error) {
     toast('Invalid node selection', true);
     return;
@@ -802,6 +867,8 @@ async function showGraphs() {
   if (generation !== renderGeneration) return;
   selectedDuration = draftDuration;
   appliedViewMode = draftViewMode;
+  appliedPairMode = draftPairMode;
+  appliedAnchor = nextAnchor;
   if (appliedViewMode === 'charts') {
     chartRefreshToken = `${Date.now()}-${generation}`;
   }
@@ -817,9 +884,9 @@ async function showGraphs() {
     animate: true,
     preserveRequest: true,
     hydrate: false,
-    selectionChange: selectionChanged && !modeChanged
+    selectionChange: (selectionChanged || pairingChanged) && !modeChanged
   });
-  await refreshStatsBatch(appliedSelection, currentPairs, selectedDuration, generation, signal);
+  await refreshStatsBatch(appliedSelection, currentPairs, selectedDuration, generation, signal, appliedAnchor);
 }
 
 function setFilter(f) {

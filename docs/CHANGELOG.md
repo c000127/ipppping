@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added an optional fixed-node pairing mode for one-to-many and one-to-one
+  checks while preserving the default many-to-many selection behavior.
+- Added the `anchor` parameter to pair and batch-stat APIs and documented the
+  selection workflow.
+
 ## Repository baseline
 
 This initial maintenance baseline records the deployed application shape:

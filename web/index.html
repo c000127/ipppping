@@ -48,6 +48,13 @@
             <button class="pill" type="button" data-filter="ext">Ext</button>
           </div>
         </div>
+        <label class="pairing-option" for="pairMode">
+          <span class="pairing-label">Pairing</span>
+          <select class="pairing-select" id="pairMode" aria-label="Pairing mode" title="Choose how selected nodes are matched">
+            <option value="all" selected>All pairs</option>
+            <option value="fixed">Fixed node</option>
+          </select>
+        </label>
         <div class="view-mode" id="viewMode" role="group" aria-label="Display mode">
           <button class="view-mode-btn on" type="button" data-mode="stats" aria-pressed="true">Results</button>
           <button class="view-mode-btn" type="button" data-mode="charts" aria-pressed="false">Charts</button>

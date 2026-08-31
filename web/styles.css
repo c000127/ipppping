@@ -170,6 +170,42 @@ body {
   flex: 1 1 0; min-width: 0; padding-left: 5px; padding-right: 5px;
   white-space: nowrap;
 }
+.pairing-option {
+  min-height: 32px; margin: 0 0 10px; padding: 0 7px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  color: var(--text-dim); transition: color var(--ease);
+}
+.pairing-option:focus-within { color: var(--text-sec); }
+.pairing-label {
+  font: 500 10.5px var(--font-ui);
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.pairing-select {
+  min-width: 0; max-width: 130px;
+  appearance: auto; color-scheme: dark;
+  border: 0; outline: none; background: transparent;
+  color: var(--text-sec); font: 500 11.5px var(--font-ui);
+  text-align: right; cursor: pointer;
+}
+.pairing-select:hover { color: var(--text); }
+.pairing-select:focus-visible {
+  outline: 1px solid var(--text-dim); outline-offset: 3px; border-radius: 2px;
+}
+.pairing-select option { background: var(--bg-panel); color: var(--text); }
+.node-anchor {
+  display: none; flex: 0 0 auto; align-items: center; justify-content: center;
+  min-width: 38px; height: 21px; padding: 0 5px;
+  border: 1px solid rgba(224,240,255,0.18); border-radius: 4px;
+  background: transparent; color: var(--text-dim);
+  font: 500 9px var(--font-ui); letter-spacing: 0.03em;
+  cursor: pointer; transition: background var(--ease), border-color var(--ease), color var(--ease);
+}
+.sidebar.pairing-fixed-mode .node.selection-anchorable .node-anchor { display: inline-flex; }
+.node-anchor:hover,
+.node-anchor[aria-pressed="true"] {
+  border-color: rgba(224,240,255,0.42); background: rgba(224,240,255,0.1); color: var(--text);
+}
+.node-anchor:disabled { cursor: default; }
 .view-mode {
   display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px;
   padding: 2px; margin: 0 0 10px;

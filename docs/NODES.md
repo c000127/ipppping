@@ -33,6 +33,15 @@ where needed, a private deployment inventory.
 7. Verify `/api/nodes`, `/api/pairs`, stats, and a graph for both directions
    where applicable.
 
+## Fixed-node selection
+
+The web sidebar supports two pairing modes. `All pairs` is the normal
+many-to-many behavior. In `Fixed node` mode, first select the nodes, mark one
+of the selected rows as fixed, and then click `Show Results`; only that node
+and each other selected node are matched. With one other selected node this is
+a one-to-one check. Removing the fixed node clears the fixed state. The API
+equivalent is `anchor=<node-id>` on `/api/pairs` or `/api/stats-batch.json`.
+
 ## Stable naming
 
 Changing `id` is a data migration, not a cosmetic rename: the API derives RRD

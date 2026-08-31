@@ -37,6 +37,25 @@ presentation API: it validates node pairs, invokes `rrdtool`, caches short-lived
 results, and serves the files in `web/`. The API listens on loopback by default;
 put a TLS reverse proxy in front of it.
 
+## Pairing modes
+
+The sidebar defaults to `All pairs`, which keeps the original many-to-many
+selection behavior. `Fixed node` changes only the pair derivation: choose one
+selected node as the fixed node and the application creates links between it
+and every other selected node. Selecting exactly one other node therefore
+produces a one-to-one view. Existing IPv4/IPv6, external-target, statistics,
+chart, and layout rules are unchanged.
+
+The same rule is available to API consumers with an optional `anchor` query
+parameter on `/api/pairs` and `/api/stats-batch.json`:
+
+```text
+/api/pairs?nodes=probe_sg,probe_jp&anchor=probe_sg
+```
+
+The anchor must be one of the selected node IDs. Omitting it preserves the
+default many-to-many behavior.
+
 ## Local development
 
 Install `rrdtool` and Python 3. Run from the repository root:

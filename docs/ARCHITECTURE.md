@@ -23,8 +23,8 @@ browser
   GET /
   GET /static/index assets and fonts
   GET /api/nodes
-  GET /api/pairs?nodes=...
-  GET /api/stats-batch.json?nodes=...&dur=...
+  GET /api/pairs?nodes=...&anchor=...
+  GET /api/stats-batch.json?nodes=...&dur=...&anchor=...
   GET /api/graph.png?source=...&target=...&type=...&dur=...
        |
        v
@@ -52,7 +52,11 @@ For two VPS nodes, the API creates both directions for IPv4 and, when both
 nodes are dual stack, both directions for IPv6. For a VPS and an external node,
 it creates the supported external direction. DNS-to-DNS pairs are rejected.
 The frontend may reorder dual-stack cards for a narrow one-column display, but
-the API remains the authority for which pairs are valid.
+the API remains the authority for which pairs are valid. The default selection
+mode is many-to-many. In fixed-node mode, an `anchor` node is paired only with
+each other selected node; an anchor plus one other node is the one-to-one case.
+The anchor must be part of the selection, and omitting it preserves the default
+pair set.
 
 ## RRD lookup
 

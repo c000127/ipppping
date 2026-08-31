@@ -337,38 +337,55 @@ def handle_nodes():
     return data.encode()
 
 
-def make_pairs(node_ids):
+def make_pairs(node_ids, anchor_id=None):
     selected = [n for n in NODES if n["id"] in node_ids]
     if len(selected) != len(set(node_ids)):
         raise ValueError("unknown node in selection")
     if len(selected) > MAX_SELECTED_NODES:
         raise ValueError(f"select no more than {MAX_SELECTED_NODES} nodes")
+
+    if anchor_id is not None and anchor_id not in node_ids:
+        raise ValueError("fixed node must be part of the selection")
+
+    if anchor_id is None:
+        combinations = [
+            (first, second)
+            for index, first in enumerate(selected)
+            for second in selected[index + 1:]
+        ]
+    else:
+        anchor = next(node for node in selected if node["id"] == anchor_id)
+        combinations = [
+            (anchor, node)
+            for node in selected
+            if node["id"] != anchor_id
+        ]
+
     pairs = []
-    for index, first in enumerate(selected):
-        for second in selected[index + 1:]:
-            if first["group"] == "dns" and second["group"] == "dns":
-                continue
-            if first["group"] == "dns" or second["group"] == "dns":
-                source, target = (second, first) if first["group"] == "dns" else (first, second)
+    for first, second in combinations:
+        if first["group"] == "dns" and second["group"] == "dns":
+            continue
+        if first["group"] == "dns" or second["group"] == "dns":
+            source, target = (second, first) if first["group"] == "dns" else (first, second)
+            pairs.append({
+                "source": source["id"], "target": target["id"], "type": "v4",
+                "srcLabel": source["label"], "tgtLabel": target["label"], "ext": True,
+                "pairKey": f'{first["id"]}_{second["id"]}', "direction": 0,
+            })
+        else:
+            pair_key = f'{first["id"]}_{second["id"]}'
+            for direction, (source, target) in enumerate(((first, second), (second, first))):
                 pairs.append({
                     "source": source["id"], "target": target["id"], "type": "v4",
-                    "srcLabel": source["label"], "tgtLabel": target["label"], "ext": True,
-                    "pairKey": f'{first["id"]}_{second["id"]}', "direction": 0,
+                    "srcLabel": source["label"], "tgtLabel": target["label"], "ext": False,
+                    "pairKey": pair_key, "direction": direction,
                 })
-            else:
-                pair_key = f'{first["id"]}_{second["id"]}'
-                for direction, (source, target) in enumerate(((first, second), (second, first))):
+                if first["v6"] and second["v6"]:
                     pairs.append({
-                        "source": source["id"], "target": target["id"], "type": "v4",
+                        "source": source["id"], "target": target["id"], "type": "v6",
                         "srcLabel": source["label"], "tgtLabel": target["label"], "ext": False,
                         "pairKey": pair_key, "direction": direction,
                     })
-                    if first["v6"] and second["v6"]:
-                        pairs.append({
-                            "source": source["id"], "target": target["id"], "type": "v6",
-                            "srcLabel": source["label"], "tgtLabel": target["label"], "ext": False,
-                            "pairKey": pair_key, "direction": direction,
-                        })
     if len(pairs) > MAX_PAIRS:
         raise ValueError(f"selection produces more than {MAX_PAIRS} graphs")
     return pairs
@@ -377,10 +394,11 @@ def make_pairs(node_ids):
 def handle_pairs(params):
     raw_nodes = first_param(params, "nodes", "")
     node_ids = [node_id for node_id in raw_nodes.split(",") if node_id]
+    anchor_id = first_param(params, "anchor") or None
     if len(node_ids) < 2:
         return json_error("invalid_selection", "select at least two nodes", HTTPStatus.BAD_REQUEST)
     try:
-        return json.dumps(make_pairs(node_ids)).encode(), HTTPStatus.OK
+        return json.dumps(make_pairs(node_ids, anchor_id)).encode(), HTTPStatus.OK
     except ValueError as exc:
         return json_error("invalid_selection", str(exc), HTTPStatus.BAD_REQUEST)
 
@@ -430,11 +448,12 @@ def handle_stats_batch(params):
     """Return every statistic for a node selection in one network round-trip."""
     raw_nodes = first_param(params, "nodes", "")
     node_ids = [node_id for node_id in raw_nodes.split(",") if node_id]
+    anchor_id = first_param(params, "anchor") or None
     if len(node_ids) < 2:
         return json_error("invalid_selection", "select at least two nodes", HTTPStatus.BAD_REQUEST)
 
     try:
-        pairs = make_pairs(node_ids)
+        pairs = make_pairs(node_ids, anchor_id)
         dur = int(first_param(params, "dur", "10800"))
         if dur not in ALLOWED_DURATIONS:
             raise ValueError("duration is not allowed")

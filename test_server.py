@@ -42,6 +42,9 @@ class RequestValidationTests(unittest.TestCase):
         self.assertIn(b"activeImageCancels", app_source)
         self.assertIn(b"IMAGE_LOAD_TIMEOUT_MS", app_source)
         self.assertIn(b'id="unifiedAxisToggle"', (web_dir / "index.html").read_bytes())
+        self.assertIn(b'id="pairMode"', (web_dir / "index.html").read_bytes())
+        self.assertIn(b"node-anchor", app_source)
+        self.assertIn(b"anchor", app_source)
         self.assertNotIn(b"onclick=", (web_dir / "index.html").read_bytes())
         self.assertNotIn(b"onclick=", app_source)
         self.assertNotIn(b"fonts.googleapis.com", (web_dir / "index.html").read_bytes())
@@ -131,6 +134,51 @@ class RequestValidationTests(unittest.TestCase):
             [("v4", 0), ("v6", 0), ("v4", 1), ("v6", 1)],
         )
 
+    def test_fixed_node_generates_only_anchor_pairs(self):
+        body, status = server.handle_pairs(parse_qs(
+            "nodes=vps_town_a1,legendsg,akari_jp&anchor=vps_town_a1"
+        ))
+        pairs = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(pairs), 8)
+        self.assertTrue(all(
+            "vps_town_a1" in (pair["source"], pair["target"])
+            for pair in pairs
+        ))
+        self.assertNotIn(
+            frozenset(("legendsg", "akari_jp")),
+            {frozenset((pair["source"], pair["target"])) for pair in pairs},
+        )
+
+    def test_fixed_node_supports_one_to_one(self):
+        body, status = server.handle_pairs(parse_qs(
+            "nodes=legendsg,akari_jp&anchor=akari_jp"
+        ))
+        pairs = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(pairs), 4)
+        self.assertTrue(all(
+            "akari_jp" in (pair["source"], pair["target"])
+            for pair in pairs
+        ))
+
+    def test_fixed_node_keeps_external_target_rule(self):
+        body, status = server.handle_pairs(parse_qs(
+            "nodes=vps_town_a1,legendsg,google_dns&anchor=google_dns"
+        ))
+        pairs = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(pairs), 2)
+        self.assertTrue(all(pair["ext"] for pair in pairs))
+        self.assertTrue(all(pair["target"] == "google_dns" for pair in pairs))
+
+    def test_pair_endpoint_rejects_anchor_outside_selection(self):
+        body, status = server.handle_pairs(parse_qs(
+            "nodes=legendsg,akari_jp&anchor=dmit_jp"
+        ))
+        self.assertEqual(status, 400)
+        self.assertEqual(json.loads(body)["error"]["code"], "invalid_selection")
+
     def test_pair_endpoint_rejects_too_many_nodes(self):
         nodes = "vps_town_a1,legendsg,akari_jp"
         with patch.object(server, "MAX_SELECTED_NODES", 2):
@@ -184,6 +232,20 @@ class RequestValidationTests(unittest.TestCase):
         self.assertEqual(len(data["items"]), 4)
         self.assertTrue(all(item.get("stats") == expected for item in data["items"]))
         self.assertEqual(fetch.call_count, 4)
+
+    def test_stats_batch_uses_fixed_node_pairs(self):
+        fake_rrd = Path(server.__file__)
+        expected = {"current_ms": 1.1, "avg_ms": 1, "max_ms": 2, "min_ms": 1, "loss_pct": 0}
+        with patch.object(server, "resolve_rrd", return_value=(fake_rrd, server.NODES[0], server.NODES[1])):
+            with patch.object(server, "rrd_fetch_stats", return_value=expected) as fetch:
+                body, status = server.handle_stats_batch(parse_qs(
+                    "nodes=vps_town_a1,legendsg,akari_jp&anchor=vps_town_a1&dur=10800&w=900&h=320"
+                ))
+        data = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(data["items"]), 8)
+        self.assertTrue(all(item.get("stats") == expected for item in data["items"]))
+        self.assertEqual(fetch.call_count, 8)
 
     def test_stats_reads_latest_valid_median_as_current(self):
         fake_rrd = Path(server.__file__)

@@ -43,6 +43,8 @@ class RequestValidationTests(unittest.TestCase):
         self.assertIn(b"IMAGE_LOAD_TIMEOUT_MS", app_source)
         self.assertIn(b'id="unifiedAxisToggle"', (web_dir / "index.html").read_bytes())
         self.assertIn(b'id="pairMode"', (web_dir / "index.html").read_bytes())
+        self.assertIn(b'class="pairing-mode-btn on"', (web_dir / "index.html").read_bytes())
+        self.assertIn(b'data-pair-mode="fixed"', (web_dir / "index.html").read_bytes())
         self.assertIn(b"node-anchor", app_source)
         self.assertIn(b"anchor", app_source)
         self.assertNotIn(b"onclick=", (web_dir / "index.html").read_bytes())

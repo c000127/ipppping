@@ -168,11 +168,12 @@ function durationOptionsMarkup() {
 
 document.addEventListener('change', event => {
   if (event.target.id === 'durSelect') changeDuration(event.target.value);
-  if (event.target.id === 'pairMode') setPairMode(event.target.value);
   if (event.target.id === 'unifiedAxisToggle') setUnifiedYAxis(event.target.checked);
 });
 
 document.addEventListener('click', event => {
+  const pairing = event.target.closest('.pairing-mode-btn[data-pair-mode]');
+  if (pairing) return setPairMode(pairing.dataset.pairMode);
   const anchor = event.target.closest('.node-anchor[data-anchor-node]');
   if (anchor) {
     event.preventDefault();
@@ -274,9 +275,12 @@ function nodeRow(n) {
 
 function updatePairingControls() {
   const sidebar = document.getElementById('sidebar');
-  const mode = document.getElementById('pairMode');
-  if (mode && mode.value !== draftPairMode) mode.value = draftPairMode;
   sidebar?.classList.toggle('pairing-fixed-mode', draftPairMode === 'fixed');
+  document.querySelectorAll('.pairing-mode-btn[data-pair-mode]').forEach(button => {
+    const active = button.dataset.pairMode === draftPairMode;
+    button.classList.toggle('on', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
   document.querySelectorAll('.node[data-node-id]').forEach(row => {
     const id = row.dataset.nodeId;
     const selected = document.getElementById('c_' + id)?.checked === true;

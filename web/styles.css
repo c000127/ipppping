@@ -170,40 +170,35 @@ body {
   flex: 1 1 0; min-width: 0; padding-left: 5px; padding-right: 5px;
   white-space: nowrap;
 }
-.pairing-option {
-  min-height: 32px; margin: 0 0 10px; padding: 0 7px;
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  color: var(--text-dim); transition: color var(--ease);
+.pairing-mode {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px;
+  padding: 2px; margin: 0 0 10px;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 7px; box-shadow: inset 0 1px 2px rgba(0,0,0,0.22);
 }
-.pairing-option:focus-within { color: var(--text-sec); }
-.pairing-label {
-  font: 500 10.5px var(--font-ui);
-  letter-spacing: 0.06em; text-transform: uppercase;
+.pairing-mode-btn {
+  min-width: 0; padding: 6px 9px;
+  border: 0; border-radius: 4px; background: transparent;
+  color: var(--text-dim); font: 500 12px var(--font-ui);
+  cursor: pointer; transition: var(--ease); white-space: nowrap;
 }
-.pairing-select {
-  min-width: 0; max-width: 130px;
-  appearance: auto; color-scheme: dark;
-  border: 0; outline: none; background: transparent;
-  color: var(--text-sec); font: 500 11.5px var(--font-ui);
-  text-align: right; cursor: pointer;
+.pairing-mode-btn:hover { color: var(--text-sec); }
+.pairing-mode-btn.on {
+  background: rgba(224,224,224,0.92); color: #111; font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.34);
 }
-.pairing-select:hover { color: var(--text); }
-.pairing-select:focus-visible {
-  outline: 1px solid var(--text-dim); outline-offset: 3px; border-radius: 2px;
-}
-.pairing-select option { background: var(--bg-panel); color: var(--text); }
 .node-anchor {
   display: none; flex: 0 0 auto; align-items: center; justify-content: center;
-  min-width: 38px; height: 21px; padding: 0 5px;
-  border: 1px solid rgba(224,240,255,0.18); border-radius: 4px;
-  background: transparent; color: var(--text-dim);
-  font: 500 9px var(--font-ui); letter-spacing: 0.03em;
+  min-width: 0; height: auto; padding: 2px 3px;
+  border: 1px solid rgba(255,255,255,0.11); border-radius: 4px;
+  background: rgba(255,255,255,0.06); color: var(--text-sec);
+  font: 600 9px/1 var(--font-ui); letter-spacing: 0;
   cursor: pointer; transition: background var(--ease), border-color var(--ease), color var(--ease);
 }
 .sidebar.pairing-fixed-mode .node.selection-anchorable .node-anchor { display: inline-flex; }
 .node-anchor:hover,
 .node-anchor[aria-pressed="true"] {
-  border-color: rgba(224,240,255,0.42); background: rgba(224,240,255,0.1); color: var(--text);
+  border-color: rgba(224,240,255,0.3); background: rgba(224,240,255,0.1); color: var(--text);
 }
 .node-anchor:disabled { cursor: default; }
 .view-mode {

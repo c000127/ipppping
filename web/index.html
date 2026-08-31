@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,viewport-fit=cover">
 <meta name="description" content="ipPping — Real-time network latency matrix between VPS nodes.">
 <title>ipPping — Latency Matrix</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260831-anchored-pairing">
+  <link rel="stylesheet" href="/static/styles.css?v=20260831-pairing-segmented">
 </head>
 <body>
 <div id="app">
@@ -48,13 +48,10 @@
             <button class="pill" type="button" data-filter="ext">Ext</button>
           </div>
         </div>
-        <label class="pairing-option" for="pairMode">
-          <span class="pairing-label">Pairing</span>
-          <select class="pairing-select" id="pairMode" aria-label="Pairing mode" title="Choose how selected nodes are matched">
-            <option value="all" selected>All pairs</option>
-            <option value="fixed">Fixed node</option>
-          </select>
-        </label>
+        <div class="pairing-mode" id="pairMode" role="group" aria-label="Pairing mode" title="Choose how selected nodes are matched">
+          <button class="pairing-mode-btn on" type="button" data-pair-mode="all" aria-pressed="true">Pairing</button>
+          <button class="pairing-mode-btn" type="button" data-pair-mode="fixed" aria-pressed="false">Fixed node</button>
+        </div>
         <div class="view-mode" id="viewMode" role="group" aria-label="Display mode">
           <button class="view-mode-btn on" type="button" data-mode="stats" aria-pressed="true">Results</button>
           <button class="view-mode-btn" type="button" data-mode="charts" aria-pressed="false">Charts</button>
@@ -82,6 +79,6 @@
 </div>
 <div class="toast-box" id="toastBox"></div>
 
-<script src="/static/app.js?v=20260831-anchored-pairing" defer></script>
+<script src="/static/app.js?v=20260831-pairing-segmented" defer></script>
 </body>
 </html>

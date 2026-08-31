@@ -1,0 +1,14 @@
+*** Slaves ***
+
+# Store the real value in this file only on the host. Keep its mode at 0600.
+secret = CHANGE_ME_IN_PRIVATE_CONFIG
+
++probe_sg
+display_name=Example Probe SG
+location=Example Probe SG
+color=808080
+
++probe_jp
+display_name=Example Probe JP
+location=Example Probe JP
+color=808080

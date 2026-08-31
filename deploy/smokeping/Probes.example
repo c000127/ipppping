@@ -1,0 +1,12 @@
+*** Probes ***
+
++ FPing
+binary = /usr/sbin/fping
+
++ FPing6
+binary = /usr/sbin/fping
+protocol = 6
+
++ TCPPing
+binary = /usr/bin/tcpping
+forks = 5

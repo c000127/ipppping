@@ -1,0 +1,8 @@
+*** Presentation ***
+
+template = /etc/smokeping/basepage.html
+htmltitle = SmokePing
+graphborders = no
+dyntitle = yes
+detail = 1
+graphs = no

@@ -1,0 +1,36 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+config/nodes.json
+config/nodes.local.json
+config/*.local.*
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+known_hosts
+
+# Runtime data and generated files
+data/
+rrd/
+*.rrd
+*.log
+logs/
+cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# Local tooling and deployment scratch files
+.venv/
+venv/
+node_modules/
+dist/
+build/
+_deploy*/
+*.bak
+*.swp

@@ -1,0 +1,20 @@
+services:
+  smokeping-slave:
+    image: lscr.io/linuxserver/smokeping:latest
+    container_name: smokeping-slave
+    hostname: slave-alias
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+      # Configure the image's slave connection using a private mechanism.
+      # Never commit the master URL or shared secret here.
+    volumes:
+      - ./config:/config
+      - ./data:/data
+      - ./config/svc-apache-disabled.run:/etc/s6-overlay/s6-rc.d/svc-apache/run:ro
+    network_mode: host
+    restart: unless-stopped
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,viewport-fit=cover">
+<meta name="description" content="ipPping — Real-time network latency matrix between VPS nodes.">
+<title>ipPping — Latency Matrix</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20260809-113">
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="toggle-btn" id="toggleSidebar" title="Toggle sidebar" aria-label="Toggle sidebar">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/>
+        </svg>
+      </button>
+      <div class="brand">ip<span>Pping</span></div>
+    </div>
+    <div class="topbar-right">
+      <div class="live-dot"></div>
+      <span class="clock" id="clock"></span>
+    </div>
+  </header>
+
+  <div class="content">
+    <div class="sidebar-overlay" id="overlay"></div>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-inner" id="sidebarInner">
+        <div class="empty nodes-loading" role="status" aria-label="Loading nodes">
+          <div class="spinner"></div>
+        </div>
+      </div>
+      <div class="sidebar-foot">
+        <div class="selection-controls" aria-label="Result controls">
+          <select class="range-select" id="durSelect" aria-label="Time range" title="Time range">
+            <option value="3600">1h</option>
+            <option value="10800" selected>3h</option>
+            <option value="21600">6h</option>
+            <option value="86400">24h</option>
+          </select>
+          <div class="pills" id="filterPills" role="group" aria-label="Protocol filter">
+            <button class="pill on" type="button" data-filter="all">All</button>
+            <button class="pill" type="button" data-filter="v4">IPv4</button>
+            <button class="pill" type="button" data-filter="v6">IPv6</button>
+            <button class="pill" type="button" data-filter="ext">Ext</button>
+          </div>
+        </div>
+        <div class="view-mode" id="viewMode" role="group" aria-label="Display mode">
+          <button class="view-mode-btn on" type="button" data-mode="stats" aria-pressed="true">Results</button>
+          <button class="view-mode-btn" type="button" data-mode="charts" aria-pressed="false">Charts</button>
+        </div>
+        <label class="axis-option" for="unifiedAxisToggle" title="Use one Y-axis range for all visible charts">
+          <span class="axis-option-label">Unified Y-axis</span>
+          <span class="axis-toggle">
+            <input id="unifiedAxisToggle" type="checkbox" aria-label="Unified Y-axis">
+            <span class="axis-track" aria-hidden="true"></span>
+          </span>
+        </label>
+        <button class="go-btn" id="goBtn" disabled>Show Results</button>
+        <div class="sel-info" id="selInfo">Select at least 2 nodes</div>
+      </div>
+    </aside>
+
+    <main class="main" id="mainArea">
+      <div class="empty" id="emptyState">
+        <div class="empty-title">Latency Matrix</div>
+        <div class="empty-sub">Select nodes and click "Show Results" to view real-time RTT across your infrastructure.</div>
+      </div>
+    </main>
+  </div>
+
+</div>
+<div class="toast-box" id="toastBox"></div>
+
+<script src="/static/app.js?v=20260807-105" defer></script>
+</body>
+</html>

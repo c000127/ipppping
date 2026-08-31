@@ -1,0 +1,34 @@
+[
+  {
+    "id": "vps_town_a1",
+    "label": "VPS.Town A1",
+    "v4": true,
+    "v6": true,
+    "group": "vps",
+    "region": "example"
+  },
+  {
+    "id": "probe_sg",
+    "label": "Example Probe SG",
+    "v4": true,
+    "v6": true,
+    "group": "vps",
+    "region": "SG"
+  },
+  {
+    "id": "probe_jp",
+    "label": "Example Probe JP",
+    "v4": true,
+    "v6": false,
+    "group": "vps",
+    "region": "JP"
+  },
+  {
+    "id": "carrier_tcp",
+    "label": "Example Carrier TCPPing",
+    "v4": true,
+    "v6": false,
+    "group": "dns",
+    "region": "CN"
+  }
+]

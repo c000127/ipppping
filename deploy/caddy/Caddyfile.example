@@ -1,0 +1,4 @@
+# Replace the site address only in the private host configuration.
+monitor.example.invalid {
+    reverse_proxy 127.0.0.1:8082
+}

@@ -1,0 +1,61 @@
+*** Targets ***
+
+probe = FPing
+
+menu = Top
+title = Network Latency Grapher: smoke-master
+
++ ICMPv4
+menu = ICMP IPv4
+title = ICMP IPv4 Latency
+
+++ smoke_master
+menu = Smoke Master
+title = Smoke Master
+host = 203.0.113.10
+nomasterpoll = yes
+slaves = probe_sg probe_jp
+
+++ probe_sg
+menu = Example Probe SG
+title = Example Probe SG
+host = 203.0.113.11
+slaves = probe_jp
+
+++ probe_jp
+menu = Example Probe JP
+title = Example Probe JP
+host = 203.0.113.12
+slaves = probe_sg
+
++ ICMPv6
+menu = ICMP IPv6
+title = ICMP IPv6 Latency (Dual-Stack Only)
+probe = FPing6
+
+++ smoke_master_v6
+menu = Smoke Master (IPv6)
+title = Smoke Master
+host = 2001:db8:1::10
+nomasterpoll = yes
+slaves = probe_sg
+
+++ probe_sg_v6
+menu = Example Probe SG (IPv6)
+title = Example Probe SG
+host = 2001:db8:1::11
+slaves = smoke_master_v6
+
++ External
+menu = External Checks
+title = External Network Checks
+
+++ carrier_tcp
+menu = Example Carrier TCPPing
+title = Example Carrier TCPPing
+probe = TCPPing
+host = target.example.invalid
+port = 443
+slaves = probe_sg probe_jp
+
+# 203.0.113.0/24 and 2001:db8::/32 are documentation ranges.

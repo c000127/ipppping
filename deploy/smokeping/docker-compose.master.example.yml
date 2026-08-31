@@ -1,0 +1,17 @@
+services:
+  smokeping:
+    image: lscr.io/linuxserver/smokeping:latest
+    container_name: smokeping
+    hostname: smoke-master
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./config:/config
+      - /srv/smokeping/data:/data
+    network_mode: host
+    restart: unless-stopped
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN

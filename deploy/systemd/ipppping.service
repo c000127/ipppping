@@ -1,0 +1,23 @@
+[Unit]
+Description=ipPping SmokePing frontend API
+After=network.target
+
+[Service]
+Type=simple
+User=ipppping
+Group=ipppping
+WorkingDirectory=/opt/ipppping
+Environment=IPPPING_DATA_DIR=/srv/smokeping/data
+Environment=IPPPING_NODES_CONFIG=/opt/ipppping/config/nodes.local.json
+Environment=IPPPING_HOST=127.0.0.1
+Environment=IPPPING_PORT=8082
+ExecStart=/usr/bin/python3 /opt/ipppping/server.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

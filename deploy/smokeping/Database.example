@@ -1,0 +1,16 @@
+*** Database ***
+
+step     = 60
+pings    = 20
+
+# Keep the short retention tier compatible with the web time-range options.
+AVERAGE  0.5   1   180
+AVERAGE  0.5   1  1440
+
+# Longer retention uses consolidated samples.
+AVERAGE  0.5  12  4320
+MIN      0.5  12  4320
+MAX      0.5  12  4320
+AVERAGE  0.5 144   720
+MIN      0.5 144   720
+MAX      0.5 144   720

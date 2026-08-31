@@ -1,0 +1,4 @@
+#!/usr/bin/with-contenv bash
+# The slave is a probe endpoint, not a public web server.
+echo "svc-apache disabled (slave mode)"
+exec s6-notifyoncheck -d -n 300 -w 1000 -c "true" tail -f /dev/null

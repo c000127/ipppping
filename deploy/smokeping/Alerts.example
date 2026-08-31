@@ -1,0 +1,4 @@
+*** Alerts ***
+
+# Keep alert thresholds in private operations policy. This file is a shape
+# reference only and deliberately does not encode production recipients.

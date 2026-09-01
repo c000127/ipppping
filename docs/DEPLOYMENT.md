@@ -16,6 +16,55 @@ Install the runtime packages using the distribution's package manager. The
 container image supplies SmokePing and its probe dependencies; verify the image
 version before production use instead of relying blindly on `latest`.
 
+## Install Docker Engine on Debian
+
+For Debian hosts, use Docker's official apt repository instructions rather than
+the distribution's unofficial `docker.io` package. The supported release list
+and the canonical commands are maintained in the [Docker Engine installation
+guide for Debian](https://docs.docker.com/engine/install/debian/).
+
+The repository-based installation sequence is:
+
+```bash
+# Remove packages that can conflict with Docker Engine from Docker's repository.
+conflicts=$(dpkg-query --show --showformat='${binary:Package}\n' \
+  docker.io docker-compose docker-doc docker-buildx podman-docker containerd runc \
+  2>/dev/null || true)
+if [ -n "$conflicts" ]; then
+    sudo apt remove -y $conflicts
+fi
+
+sudo apt update
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg \
+    -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/debian
+Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io \
+    docker-buildx-plugin docker-compose-plugin
+
+sudo systemctl enable --now docker
+sudo systemctl status docker --no-pager
+sudo docker run --rm hello-world
+docker compose version
+```
+
+Docker's Debian guide warns that published container ports can bypass `ufw` or
+`firewalld`; review the host firewall and place Docker-specific filtering in
+the `DOCKER-USER` chain when required. Do not copy production secrets, node
+inventories, SSH keys, or RRD data into this repository.
+
 ## Install the API
 
 ```bash

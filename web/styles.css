@@ -2550,3 +2550,16 @@ body {
   content: none;
   border-left: 0;
 }
+
+/* Result cards can carry both the external marker and the IP-family marker. */
+.route-badges {
+  display: flex; align-items: center; gap: 4px;
+  min-width: 0; flex: 0 0 auto;
+}
+.route-badges .badge { flex: 0 0 auto; }
+.grid.stats-only .route-badges {
+  grid-area: badge; align-self: start; margin-top: 4px;
+}
+.grid.stats-only .route-badges .badge {
+  font-size: 14px; padding: 3px 9px;
+}

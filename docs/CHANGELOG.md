@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added IPv6 pairing and `ExternalIPv6` RRD resolution for external targets,
+  including Guangdong carrier TCPPing targets while keeping Telegram DC5 IPv4-only.
+- Added stable alphabetical node ordering, v4/v6 capability badges for every
+  node, and separate `Ext` plus IP-family badges on external result cards.
 - Added an optional fixed-node pairing mode for one-to-many and one-to-one
   checks while preserving the default many-to-many selection behavior.
 - Added the `anchor` parameter to pair and batch-stat APIs and documented the

@@ -36,15 +36,16 @@ NODES = [
     {"id": "gomami",            "label": "Gomami HK",          "v4": True,  "v6": False, "group": "vps",  "region": "JP"},
     {"id": "dmit_jp",           "label": "DMIT JP T1",         "v4": True,  "v6": True,  "group": "vps",  "region": "JP"},
     {"id": "dmit_hk",           "label": "DMIT HK T1",         "v4": True,  "v6": True,  "group": "vps",  "region": "HK"},
-    {"id": "greencloudau",      "label": "Greencloud AU",      "v4": True,  "v6": True,  "group": "vps",  "region": "AU"},
     {"id": "alphavps_sea",      "label": "AlphaVPS SEA",       "v4": True,  "v6": True,  "group": "vps",  "region": "SEA"},
-    {"id": "greencloudsg",      "label": "Greencloud SG",      "v4": True,  "v6": True,  "group": "vps",  "region": "SG"},
     {"id": "datawave_akari_hk", "label": "DataWave Akari HK",  "v4": True,  "v6": True,  "group": "vps",  "region": "HK"},
     {"id": "xzhk",              "label": "XZHK",               "v4": True,  "v6": False, "group": "vps",  "region": "HK"},
     {"id": "bugnet_sea",        "label": "BugNet SEA",         "v4": True,  "v6": True,  "group": "vps",  "region": "SEA"},
-    {"id": "google_dns",        "label": "Google DNS",          "v4": True,  "v6": False, "group": "dns",  "region": "Global"},
-    {"id": "cloudflare_dns",    "label": "Cloudflare DNS",      "v4": True,  "v6": False, "group": "dns",  "region": "Global"},
+    {"id": "google_dns",        "label": "Google DNS",          "v4": True,  "v6": True,  "group": "dns",  "region": "Global"},
+    {"id": "cloudflare_dns",    "label": "Cloudflare DNS",      "v4": True,  "v6": True,  "group": "dns",  "region": "Global"},
     {"id": "tg5",               "label": "Telegram DC5",         "v4": True,  "v6": False, "group": "dns",  "region": "Global"},
+    {"id": "gd_telecom_tcp80",  "label": "广东电信 TCPPing",     "v4": True,  "v6": True,  "group": "dns",  "region": "CN-GD"},
+    {"id": "gd_mobile_tcp53",   "label": "广东移动 TCPPing",     "v4": True,  "v6": True,  "group": "dns",  "region": "CN-GD"},
+    {"id": "gd_unicom_tcp80",   "label": "广东联通 TCPPing",     "v4": True,  "v6": True,  "group": "dns",  "region": "CN-GD"},
 ]
 try:
     NODES = load_nodes(NODES_CONFIG)
@@ -115,7 +116,8 @@ def resolve_rrd(source, target, typ):
 
     is_master = source == "vps_town_a1"
     if target_node["group"] == "dns":
-        category, target_name = "External", target
+        category = "ExternalIPv6" if typ == "v6" else "External"
+        target_name = f"{target}_v6" if typ == "v6" else target
     elif typ == "v4":
         category, target_name = "ICMPv4", target
     else:
@@ -367,11 +369,21 @@ def make_pairs(node_ids, anchor_id=None):
             continue
         if first["group"] == "dns" or second["group"] == "dns":
             source, target = (second, first) if first["group"] == "dns" else (first, second)
-            pairs.append({
-                "source": source["id"], "target": target["id"], "type": "v4",
+            pair_key = f'{first["id"]}_{second["id"]}'
+            pair_meta = {
                 "srcLabel": source["label"], "tgtLabel": target["label"], "ext": True,
-                "pairKey": f'{first["id"]}_{second["id"]}', "direction": 0,
-            })
+                "pairKey": pair_key, "direction": 0,
+            }
+            if source["v4"] and target["v4"]:
+                pairs.append({
+                    "source": source["id"], "target": target["id"], "type": "v4",
+                    **pair_meta,
+                })
+            if source["v6"] and target["v6"]:
+                pairs.append({
+                    "source": source["id"], "target": target["id"], "type": "v6",
+                    **pair_meta,
+                })
         else:
             pair_key = f'{first["id"]}_{second["id"]}'
             for direction, (source, target) in enumerate(((first, second), (second, first))):

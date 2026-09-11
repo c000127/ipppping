@@ -1,6 +1,13 @@
 'use strict';
 
 let nodes = [];
+const nodeLabelCollator = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
+function sortNodesByLabel(items) {
+  return [...items].sort((a, b) => {
+    const byLabel = nodeLabelCollator.compare(String(a.label), String(b.label));
+    return byLabel || String(a.id).localeCompare(String(b.id), 'en', { sensitivity: 'base', numeric: true });
+  });
+}
 let currentPairs = [];
 let draftSelection = [];
 let appliedSelection = [];
@@ -222,7 +229,7 @@ async function loadNodes() {
   try {
     const data = await fetchJson('/api/nodes');
     if (!Array.isArray(data)) throw new Error('invalid node response');
-    nodes = data;
+    nodes = sortNodesByLabel(data);
     renderSidebar();
     scheduleStatsSnapshot();
   } catch (error) {
@@ -258,11 +265,10 @@ function renderSidebar() {
 
 function nodeRow(n) {
   let meta = '';
-  if (n.group === 'vps') {
-    const protocols = ['<span class="node-meta badge badge-v4">v4</span>'];
-    if (n.v6) protocols.push('<span class="node-meta badge badge-v6">v6</span>');
-    meta = `<span class="node-protocols">${protocols.join('')}</span>`;
-  }
+  const protocols = [];
+  if (n.v4) protocols.push('<span class="node-meta badge badge-v4">v4</span>');
+  if (n.v6) protocols.push('<span class="node-meta badge badge-v6">v6</span>');
+  if (protocols.length) meta = `<span class="node-protocols">${protocols.join('')}</span>`;
   const id = escapeHtml(n.id);
   const label = escapeHtml(n.label);
   return `<div class="node" id="n_${id}" data-node-id="${id}" tabindex="0" role="checkbox" aria-checked="false">
@@ -395,9 +401,13 @@ function makePairs(sel, anchor = null) {
     if (na.group === 'dns' && nb.group === 'dns') continue;
     if (na.group === 'dns' || nb.group === 'dns') {
       const src = na.group === 'dns' ? b : a, tgt = na.group === 'dns' ? a : b;
-      p.push({ source: src, target: tgt, type: 'v4',
-        srcLabel: nodes.find(n=>n.id===src)?.label, tgtLabel: nodes.find(n=>n.id===tgt)?.label,
-        ext: true, pairKey: [a, b].join('_'), direction: 0 });
+      const srcLabel = nodes.find(n => n.id === src)?.label;
+      const tgtLabel = nodes.find(n => n.id === tgt)?.label;
+      const pairMeta = { srcLabel, tgtLabel, ext: true, pairKey: [a, b].join('_'), direction: 0 };
+      if (na.v4 && nb.v4)
+        p.push({ source: src, target: tgt, type: 'v4', ...pairMeta });
+      if (na.v6 && nb.v6)
+        p.push({ source: src, target: tgt, type: 'v6', ...pairMeta });
     } else {
       [{s:a,t:b},{s:b,t:a}].forEach(x => {
         p.push({ source: x.s, target: x.t, type: 'v4',
@@ -1133,8 +1143,12 @@ function cancelCardRemoval(card) {
 function cardContentMarkup(pair, charts) {
   const srcLabel = escapeHtml(pair.srcLabel);
   const tgtLabel = escapeHtml(pair.tgtLabel);
-  const bc = pair.ext ? 'badge-ext' : pair.type === 'v6' ? 'badge-v6' : 'badge-v4';
-  const bl = pair.ext ? 'Ext' : pair.type === 'v6' ? 'v6' : 'v4';
+  const typeBadgeClass = pair.type === 'v6' ? 'badge-v6' : 'badge-v4';
+  const typeBadgeLabel = pair.type === 'v6' ? 'v6' : 'v4';
+  const badges = [
+    ...(pair.ext ? ['<span class="badge badge-ext">Ext</span>'] : []),
+    `<span class="badge ${typeBadgeClass}">${typeBadgeLabel}</span>`,
+  ].join('');
   let chartMarkup = '';
   if (charts) {
     const safeUrl = escapeHtml(requestUrl('/api/graph.png', graphQueryFor(pair)));
@@ -1148,7 +1162,7 @@ function cardContentMarkup(pair, charts) {
   }
   return `<div class="card-head">
         <div class="route">
-          <span class="badge ${bc}">${bl}</span>
+          <span class="route-badges">${badges}</span>
           <span class="route-node route-source">${srcLabel}</span>
           <span class="route-arrow" aria-hidden="true"><span class="route-arrow-inline">\u2192</span><span class="route-arrow-down">\u2193</span></span>
           <span class="route-node route-target">${tgtLabel}</span>
@@ -1251,7 +1265,7 @@ function renderGrid({ animate = true, animateLayout = animate, preserveRequest =
   const before = animateLayout ? captureCardRects(grid) : new Map();
   grid.classList.toggle('stats-only', !charts);
   let list = currentPairs;
-  if (activeFilter === 'v4')  list = currentPairs.filter(p => !p.ext && p.type === 'v4');
+  if (activeFilter === 'v4')  list = currentPairs.filter(p => p.type === 'v4');
   if (activeFilter === 'v6')  list = currentPairs.filter(p => p.type === 'v6');
   if (activeFilter === 'ext') list = currentPairs.filter(p => p.ext);
 

@@ -107,6 +107,15 @@ Stage all files from `deploy/smokeping/` on a slave, then run:
 python3 install-slave-runtime.py --probes FPing,FPing6,TCPPing
 ```
 
+On an IPv4-only node whose IPv6 route blackholes HTTPS connections, use
+`--upload-family ipv4`. This sets the supported IO::Socket::SSL `inet4` import
+through the container's `PERL5OPT`, retaining existing Perl options. It changes
+only the collector's TLS socket family: DNS lookup, the original HTTPS hostname,
+SNI, certificate verification, HMAC authentication and probe configuration are
+unchanged. No CDN IP is pinned, and host IPv6 is not disabled. Later installer
+runs preserve this choice; `--upload-family auto` removes this specific import.
+Dual-stack nodes should retain automatic transport family selection.
+
 The installer expects `/root/smokeping-slave/docker-compose.yml`, preserves its
 private environment, writes `ipppping.override.yml`, pins the running image,
 quietly validates merged Compose, and recreates only `smokeping-slave`. Existing
@@ -148,6 +157,7 @@ do not regard rollback as a long-term repair. No RRD data needs deletion.
 
 - [SmokePing command-line and foreground/slave operation](https://oss.oetiker.ch/smokeping/doc/smokeping.en.html)
 - [LinuxServer SmokePing image and supported environment](https://docs.linuxserver.io/images/docker-smokeping/)
+- [IO::Socket::SSL supported inet4 transport option](https://metacpan.org/pod/IO%3A%3ASocket%3A%3ASSL)
 
 ## Production validation notes (2026-09-21)
 
@@ -163,7 +173,8 @@ and a PNG graph. Per-probe freshness covered 47 slave/probe combinations.
 These checks do not constitute a long-duration memory soak test or proof of a
 fixed percentage performance improvement.
 
-One remaining operational limitation: the IPv4-only YXVM JP Vol was producing
-data but logged polling rounds around 125–137 seconds despite the unchanged
-configured 60-second step. Its slow sampling path needs separate profiling;
-this rollout does not restore the unsafe direct master ingress to mask it.
+The IPv4-only YXVM JP Vol initially logged 125–137-second polling rounds and
+HTTPS config-reload timeouts. Direct checks showed working IPv4 HTTPS and a
+blackholed IPv6 HTTPS path. It was then configured with `--upload-family ipv4`;
+the configured 60-second sampling step and original secure upload URL remain
+unchanged. The unsafe direct master ingress was not restored.

@@ -1,20 +1,35 @@
 services:
   smokeping-slave:
-    image: lscr.io/linuxserver/smokeping:latest
+    # Pin a validated digest; upgrade deliberately and test a config reload.
+    image: ${SMOKEPING_IMAGE:?set a validated image digest}
     container_name: smokeping-slave
     hostname: slave-alias
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=Asia/Shanghai
+      - IPPPING_REQUIRED_PROBES=FPing,FPing6,TCPPing
       # Configure the image's slave connection using a private mechanism.
       # Never commit the master URL or shared secret here.
     volumes:
       - ./config:/config
       - ./data:/data
       - ./config/svc-apache-disabled.run:/etc/s6-overlay/s6-rc.d/svc-apache/run:ro
+      - ./config/svc-smokeping-slave.run:/etc/s6-overlay/s6-rc.d/svc-smokeping/run:ro
+      - ./config/slave-healthcheck.pl:/usr/local/bin/slave-healthcheck:ro
     network_mode: host
     restart: unless-stopped
+    healthcheck:
+      test: [CMD, /usr/local/bin/slave-healthcheck]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
     cap_add:
       - NET_RAW
       - NET_ADMIN

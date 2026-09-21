@@ -1,0 +1,7 @@
+[Unit]
+Description=Recover SmokePing slave after sustained probe failure
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ipppping-slave-recover

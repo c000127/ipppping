@@ -58,6 +58,11 @@ SmokePing target changes require a coordinated rollout:
 
 Do not rename an ID casually. The ID is part of the RRD lookup contract.
 
+For foreground slave PID handling, config-version propagation, bounded API
+resources, upload-only legacy access, and end-to-end freshness monitoring, see
+[LIGHTWEIGHT.md](LIGHTWEIGHT.md). Compose commands on updated slaves must include
+the private `ipppping.override.yml`; do not recreate using the base file alone.
+
 ## Backup and recovery
 
 Back up these classes separately:

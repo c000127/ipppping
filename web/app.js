@@ -29,9 +29,6 @@ let unifiedChartRange = null;
 let renderGeneration = 0;
 let activeController = null;
 let batchLoadingGeneration = -1;
-let statsSnapshotPromise = null;
-let statsSnapshotDuration = null;
-let statsSnapshotController = null;
 let routeFitFrame = 0;
 let routeFitObservedWidth = 0;
 let suppressStatsAnimationGeneration = -1;
@@ -231,7 +228,6 @@ async function loadNodes() {
     if (!Array.isArray(data)) throw new Error('invalid node response');
     nodes = sortNodesByLabel(data);
     renderSidebar();
-    scheduleStatsSnapshot();
   } catch (error) {
     renderNodesError();
     toast('Failed to load nodes', true);
@@ -724,46 +720,6 @@ function restoreStoredStats(dur) {
   }
 }
 
-function scheduleStatsSnapshot() {
-  const run = () => { void prefetchStatsSnapshot(selectedDuration); };
-  if ('requestIdleCallback' in window) window.requestIdleCallback(run, { timeout: 800 });
-  else setTimeout(run, 150);
-}
-
-function prefetchStatsSnapshot(dur) {
-  if (nodes.length < 2) return Promise.resolve(null);
-  if (statsSnapshotPromise && statsSnapshotDuration === dur) return statsSnapshotPromise;
-  if (statsSnapshotController) statsSnapshotController.abort();
-  statsSnapshotController = new AbortController();
-  statsSnapshotDuration = dur;
-  const controller = statsSnapshotController;
-  const graphSize = graphSizeParams();
-  const run = (async () => {
-    try {
-      const data = await fetchJson(requestUrl('/api/stats-batch.json', {
-        nodes: nodes.map(node => node.id).join(','), dur, w: graphSize.w, h: graphSize.h
-      }), controller.signal, 30000);
-      if (!data || !Array.isArray(data.items)) return null;
-      const cachedAt = Date.now();
-      cacheBatchItems(data.items, dur, cachedAt);
-      try {
-        sessionStorage.setItem(storedStatsKey(dur), JSON.stringify({ cachedAt, items: data.items }));
-      } catch (_) {
-        // A full or disabled session store must not affect live monitoring.
-      }
-      return data;
-    } catch (error) {
-      if (error.name !== 'AbortError') return null;
-      return null;
-    } finally {
-      if (statsSnapshotPromise === run) statsSnapshotPromise = null;
-      if (statsSnapshotController === controller) statsSnapshotController = null;
-    }
-  })();
-  statsSnapshotPromise = run;
-  return run;
-}
-
 function primeCardsFromCache(pairs, dur, animate = true) {
   const now = Date.now();
   let allFresh = true;
@@ -804,19 +760,6 @@ async function refreshStatsBatch(nodeIds, pairs, dur, generation, signal, anchor
     return;
   }
 
-  if (statsSnapshotPromise && statsSnapshotDuration === dur) {
-    await statsSnapshotPromise;
-    if (generation !== renderGeneration) return;
-    if (primeCardsFromCache(pairs, dur, animateStats)) {
-      batchLoadingGeneration = -1;
-      pairGroupRanges = computeGroupRanges(pairs, dur);
-      if (chartsEnabled()) {
-        renderGrid({ animate: animateStats, animateLayout: false, preserveRequest: true, hydrate: false, loadCharts: true });
-      }
-      return;
-    }
-  }
-
   const graphSize = graphSizeParams();
   let data;
   try {
@@ -843,6 +786,10 @@ async function refreshStatsBatch(nodeIds, pairs, dur, generation, signal, anchor
 
   if (generation !== renderGeneration) return;
   const outcomes = cacheBatchItems(data.items, dur);
+  try {
+    // Persist only the user's requested selection, never an all-node snapshot.
+    sessionStorage.setItem(storedStatsKey(dur), JSON.stringify({ cachedAt: Date.now(), items: data.items }));
+  } catch (_) { /* Optional cache; live results remain available. */ }
 
   pairGroupRanges = computeGroupRanges(pairs, dur);
   batchLoadingGeneration = -1;

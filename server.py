@@ -5,20 +5,23 @@ import os
 import subprocess
 import re
 import threading
-import time
 import urllib.parse
 import math
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from socketserver import ThreadingMixIn
 from config import (
-    ALLOWED_DURATIONS, ALLOWED_THEMES, ALLOWED_TYPES, CACHE_LOCK, DATA_DIR,
+    ALLOWED_DURATIONS, ALLOWED_THEMES, ALLOWED_TYPES, DATA_DIR,
     GRAPH_CACHE, GRAPH_CACHE_TTL, GRAPH_SEMAPHORE, HOST, LOG, MAX_GRAPH_WORKERS, MAX_PAIRS,
     MAX_SELECTED_NODES, NODES_CONFIG, PORT, STATS_CACHE, STATS_CACHE_TTL,
-    TIMEZONE, WEB_DIR,
+    TIMEZONE, WEB_DIR, MAX_HTTP_WORKERS, MAX_BATCH_REQUESTS,
 )
+from runtime import serialized_keys, windowed_map
 from nodes import load_nodes
 from rrd import find_rrd as find_rrd_file
+
+BATCH_EXECUTOR = ThreadPoolExecutor(max_workers=MAX_GRAPH_WORKERS, thread_name_prefix="stats")
+BATCH_SLOTS = threading.BoundedSemaphore(MAX_BATCH_REQUESTS)
 
 SECURITY_HEADERS = [
     ("X-Content-Type-Options", "nosniff"),
@@ -129,19 +132,11 @@ def resolve_rrd(source, target, typ):
 
 
 def cache_get(cache, key, ttl):
-    now = time.monotonic()
-    with CACHE_LOCK:
-        value = cache.get(key)
-        if value and now - value[0] < ttl:
-            return value[1]
-        if value:
-            cache.pop(key, None)
-    return None
+    return cache.get_value(key)
 
 
 def cache_put(cache, key, value):
-    with CACHE_LOCK:
-        cache[key] = (time.monotonic(), value)
+    cache.put(key, value, GRAPH_CACHE_TTL if cache is GRAPH_CACHE else STATS_CACHE_TTL)
 
 def parse_graph_size(params):
     try:
@@ -154,6 +149,7 @@ def parse_graph_size(params):
     return w, h
 
 
+@serialized_keys
 def rrd_fetch_stats(rrd_path, dur=3600, w=900, h=320):
     """Fetch the latest median plus range statistics for the duration."""
     cmd = [
@@ -219,6 +215,7 @@ def _parse_rrd_value(token):
     return v if math.isfinite(v) else None
 
 
+@serialized_keys
 def rrd_fetch_series(rrd_path, dur=3600):
     """Return a structured time series for the Canvas chart engine.
 
@@ -476,11 +473,15 @@ def handle_stats_batch(params):
     if not pairs:
         return json.dumps({"items": []}).encode(), HTTPStatus.OK
 
-    workers = min(MAX_GRAPH_WORKERS, len(pairs))
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="stats-batch") as executor:
-        items = list(executor.map(lambda pair: _batch_stats_item(pair, dur, w, h), pairs))
+    if not BATCH_SLOTS.acquire(blocking=False):
+        return json_error("busy", "statistics capacity reached; retry later", HTTPStatus.SERVICE_UNAVAILABLE)
+    try:
+        items = list(windowed_map(BATCH_EXECUTOR, lambda pair: _batch_stats_item(pair, dur, w, h), pairs, MAX_GRAPH_WORKERS))
+    finally:
+        BATCH_SLOTS.release()
     return json.dumps({"items": items}).encode(), HTTPStatus.OK
 
+@serialized_keys
 def handle_graph(params):
     try:
         source, target, typ, dur, theme, forced_ymin, forced_ymax = parse_request(params)
@@ -499,7 +500,12 @@ def handle_graph(params):
     except FileNotFoundError:
         return json_error("no_data", "no RRD data is available", HTTPStatus.NOT_FOUND)
 
-    # Determine unit and multiplier
+    cache_key = (rrd_path, os.stat(rrd_path).st_mtime_ns, dur, theme, forced_ymin, forced_ymax, w, h)
+    cached = cache_get(GRAPH_CACHE, cache_key, GRAPH_CACHE_TTL)
+    if cached is not None:
+        return cached, 200, "image/png"
+
+    # Determine unit and multiplier only on a cache miss.
     if forced_ymax is not None:
         # Use the forced range to decide unit
         if forced_ymax < 1:
@@ -720,10 +726,6 @@ def handle_graph(params):
             cmd += ["--lower-limit", str(y_lower), "--upper-limit", str(y_upper), "--rigid",
                     "--y-grid", "{}:1".format(int(step) if step == int(step) else step)]
 
-    cache_key = (rrd_path, os.stat(rrd_path).st_mtime_ns, dur, theme, forced_ymin, forced_ymax, w, h)
-    cached = cache_get(GRAPH_CACHE, cache_key, GRAPH_CACHE_TTL)
-    if cached is not None:
-        return cached, 200, "image/png"
     try:
         with GRAPH_SEMAPHORE:
             r = subprocess.run(cmd, capture_output=True, timeout=20, env=env)
@@ -780,7 +782,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_security_headers()
             for k, v in cors_headers: self.send_header(k, v)
-            if path.endswith(".json"):
+            if status == HTTPStatus.SERVICE_UNAVAILABLE:
+                self.send_header("Retry-After", "2")
+            if path.endswith(".json") and status == HTTPStatus.OK:
                 self.send_header("Cache-Control", "public, max-age=15, s-maxage=30, stale-while-revalidate=60")
             else:
                 self.send_header("Cache-Control", "no-store")
@@ -815,7 +819,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", ct)
             self.send_security_headers()
             for k, v in cors_headers: self.send_header(k, v)
-            self.send_header("Cache-Control", "public, max-age=15, s-maxage=30, stale-while-revalidate=60")
+            self.send_header("Cache-Control", "public, max-age=15, s-maxage=30, stale-while-revalidate=60" if status == HTTPStatus.OK else "no-store")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -906,6 +910,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
 class ThreadingHTTPServer(ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+
+    def __init__(self, *args, **kwargs):
+        self.request_slots = threading.BoundedSemaphore(MAX_HTTP_WORKERS)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        request.settimeout(10)
+        if not self.request_slots.acquire(blocking=False):
+            try:
+                request.settimeout(0.1)
+                request.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nRetry-After: 2\r\nConnection: close\r\n\r\n")
+            except OSError:
+                pass
+            finally:
+                self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.request_slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.request_slots.release()
 
 
 INDEX_HTML = r"""<!DOCTYPE html>

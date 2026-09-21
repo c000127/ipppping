@@ -2,6 +2,7 @@ import logging
 import os
 import threading
 from pathlib import Path
+from runtime import BoundedCache
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = os.environ.get("IPPPING_DATA_DIR", "/home/smokeping/data")
@@ -25,6 +26,7 @@ logging.basicConfig(
 )
 LOG = logging.getLogger("ipppping")
 GRAPH_SEMAPHORE = threading.BoundedSemaphore(MAX_GRAPH_WORKERS)
-CACHE_LOCK = threading.Lock()
-GRAPH_CACHE = {}
-STATS_CACHE = {}
+MAX_HTTP_WORKERS = max(1, int(os.environ.get("IPPPING_MAX_HTTP_WORKERS", "16")))
+MAX_BATCH_REQUESTS = max(1, int(os.environ.get("IPPPING_MAX_BATCH_REQUESTS", "4")))
+GRAPH_CACHE = BoundedCache(128, 16 * 1024 * 1024)
+STATS_CACHE = BoundedCache(256, 8 * 1024 * 1024)

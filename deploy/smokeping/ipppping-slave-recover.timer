@@ -1,0 +1,10 @@
+[Unit]
+Description=Check SmokePing slave process health once per minute
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1min
+RandomizedDelaySec=10s
+
+[Install]
+WantedBy=timers.target

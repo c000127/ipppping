@@ -123,7 +123,7 @@ class RequestValidationTests(unittest.TestCase):
         ))
         pairs = json.loads(body)
         self.assertEqual(status, 200)
-        self.assertEqual(len(pairs), 6)
+        self.assertEqual(len(pairs), 8)
         self.assertTrue(any(pair["ext"] for pair in pairs))
         self.assertTrue(any(pair["type"] == "v6" for pair in pairs))
 
@@ -170,9 +170,10 @@ class RequestValidationTests(unittest.TestCase):
         ))
         pairs = json.loads(body)
         self.assertEqual(status, 200)
-        self.assertEqual(len(pairs), 2)
+        self.assertEqual(len(pairs), 4)
         self.assertTrue(all(pair["ext"] for pair in pairs))
         self.assertTrue(all(pair["target"] == "google_dns" for pair in pairs))
+        self.assertEqual({pair["type"] for pair in pairs}, {"v4", "v6"})
 
     def test_pair_endpoint_rejects_anchor_outside_selection(self):
         body, status = server.handle_pairs(parse_qs(

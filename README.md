@@ -86,6 +86,10 @@ The tests that inspect real RRD contents require a SmokePing data directory and
 
 ## Deployment
 
+See [sustainable lightweight operation](docs/LIGHTWEIGHT.md) for the upload-only
+legacy host, bounded API, selected-only frontend loading, and supervised slave
+runtime with process and end-to-end freshness checks.
+
 Read [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the complete sequence. The
 short version is:
 

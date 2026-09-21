@@ -2,3 +2,17 @@
 monitor.example.invalid {
     reverse_proxy 127.0.0.1:8082
 }
+
+# Option 1: retain SmokePing's authenticated slave protocol, not its UI.
+collector.example.invalid {
+    @slave_upload {
+        method POST
+        path /smokeping/ /smokeping/smokeping.cgi
+    }
+    handle @slave_upload {
+        reverse_proxy 127.0.0.1:8080
+    }
+    handle {
+        respond "Not Found" 404
+    }
+}

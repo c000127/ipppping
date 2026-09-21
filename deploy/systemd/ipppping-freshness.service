@@ -1,0 +1,10 @@
+[Unit]
+Description=Check end-to-end SmokePing slave RRD freshness
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/ipppping/check_freshness.py
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true

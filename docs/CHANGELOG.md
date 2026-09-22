@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-22 — P1 correctness and request governance
+
+- Shared four-slot browser request pool for JSON and PNG; overload no longer
+  fans out into per-card requests. Added cancellation, deduplication and bounded retries.
+- Added opt-in `state=p1` statistics with raw RRD measurement timestamps,
+  nullable unknown values and explicit stale/error states; old clients retain
+  their five-field response. Current no longer falls back to Average.
+- Bounded browser statistics storage and retained manual refresh; removed the
+  decorative live indicator and automatic PNG retries during backend failures.
+- Added reproducible P0 fixtures, browser/real-RRD tests, and production smoke
+  checks. P1 deployed; performance tradeoffs and remaining validation are in
+  [the P0/P1 report](FRONTEND_P0_P1_REPORT.md).
+
 ## Unreleased
 
 - Added IPv6 pairing and `ExternalIPv6` RRD resolution for external targets,

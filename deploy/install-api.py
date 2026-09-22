@@ -10,7 +10,10 @@ import urllib.request
 
 source = Path(sys.argv[1]).resolve()
 target = Path('/opt/ipppping')
-files = ['config.py', 'server.py', 'runtime.py', 'web/app.js']
+# Dependencies first, HTML last. New state semantics are API opt-in so an old
+# cached client remains compatible while the application is being replaced.
+files = ['config.py', 'server.py', 'runtime.py', 'web/request-state.js',
+         'web/styles.css', 'web/app.js', 'web/index.html']
 stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
 backup = Path('/root/ipppping-backup-' + stamp)
 backup.mkdir(mode=0o700)
@@ -41,7 +44,7 @@ try:
 except BaseException:
     for name in existed:
         shutil.copy2(backup / name, target / name)
-    # New runtime.py is harmless and deliberately retained on rollback.
+    # Newly introduced JS/runtime files are inert under the restored HTML.
     subprocess.run(['systemctl', 'restart', 'ipppping'], check=True)
     raise
 print('API/frontend installed and healthy. Backup:', backup)

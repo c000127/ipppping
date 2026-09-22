@@ -35,3 +35,4 @@ _deploy*/
 *.bak
 *.swp
 ipppping-runtime.tar
+test-results/

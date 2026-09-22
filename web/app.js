@@ -35,9 +35,18 @@ let suppressStatsAnimationGeneration = -1;
 let chartRefreshToken = 'initial';
 const isMobile = () => window.innerWidth <= 768;
 const REQUEST_TIMEOUT_MS = 15000;
-const MAX_STATS_CONCURRENT = 6;
+const requestPool = new RequestState.Pool(4);
+const jsonRequests = new Map();
+const statsFailures = new Map();
+let individualFallbackGeneration = -1;
+let blockedChartsGeneration = -1;
+const statsLRU = new Map();
+const MAX_STATS_CACHE_BYTES = 2 * 1024 * 1024;
+let statsCacheBytes = 0;
 const CLIENT_STATS_TTL_MS = 60000;
 const STORED_STATS_TTL_MS = 300000;
+const measurementTimeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Shanghai', hour12: false,
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -50,7 +59,18 @@ function requestUrl(path, params) {
   return `${path}?${query}`;
 }
 
-async function fetchJson(url, signal, timeoutMs = REQUEST_TIMEOUT_MS) {
+function fetchJson(url, signal, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const pending = jsonRequests.get(url);
+  if (pending && pending.signal === signal && !signal?.aborted) return pending.promise;
+  const promise = requestPool.run(() => fetchJsonAttempt(url, signal, timeoutMs), signal);
+  const entry = { signal, promise };
+  jsonRequests.set(url, entry);
+  const cleanup = () => { if (jsonRequests.get(url) === entry) jsonRequests.delete(url); };
+  promise.then(cleanup, cleanup);
+  return promise;
+}
+
+async function fetchJsonAttempt(url, signal, timeoutMs) {
   const controller = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -63,9 +83,16 @@ async function fetchJson(url, signal, timeoutMs = REQUEST_TIMEOUT_MS) {
     else signal.addEventListener('abort', abort, { once: true });
   }
   try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
+    for (let attempt = 0; ; attempt++) {
+      const response = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+      if (response.ok) return await response.json();
+      const error = Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
+      await response.body?.cancel();
+      if (![429, 503].includes(response.status) || attempt >= 2) throw error;
+      // The timeout covers retries and body consumption. A long Retry-After
+      // expires this request instead of retrying earlier than the server asked.
+      await RequestState.delay(RequestState.retryDelay(response.headers.get('Retry-After'), attempt), controller.signal);
+    }
   } catch (error) {
     if (timedOut) throw new Error('Request timed out');
     throw error;
@@ -73,25 +100,6 @@ async function fetchJson(url, signal, timeoutMs = REQUEST_TIMEOUT_MS) {
     clearTimeout(timer);
     if (signal) signal.removeEventListener('abort', abort);
   }
-}
-
-async function mapWithConcurrency(items, worker, signal, limit = MAX_STATS_CONCURRENT) {
-  const results = new Array(items.length);
-  let next = 0;
-  async function run() {
-    while (!signal?.aborted) {
-      const index = next++;
-      if (index >= items.length) return;
-      try {
-        results[index] = await worker(items[index], index);
-      } catch (error) {
-        if (error.name !== 'AbortError') results[index] = null;
-      }
-    }
-  }
-  const workers = Math.min(limit, items.length);
-  await Promise.all(Array.from({ length: workers }, run));
-  return results;
 }
 
 // Sidebar toggle
@@ -115,7 +123,8 @@ if (isMobile()) {
 function tick() {
   const d = new Date();
   document.getElementById('clock').textContent =
-    d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Shanghai', hour12: false }) + ' CST';
+    d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Shanghai', hour12: false }) + ' UTC+08:00';
+  if (d.getSeconds() % 15 === 0) refreshVisibleDataStates();
 }
 tick(); setInterval(tick, 1000);
 
@@ -457,6 +466,7 @@ let imageObserver = null;
 const activeImageCancels = new Map();
 
 function queueImageLoad(img, url, skelId, retries, generation) {
+  img.dataset.queued = '1';
   loadQueue.push({
     img, url, skelId, retries: retries || 0, generation,
     sourceUrl: img.dataset.url
@@ -468,17 +478,19 @@ function drainQueue() {
   while (activeLoads < MAX_CONCURRENT && loadQueue.length > 0) {
     const job = loadQueue.shift();
     activeLoads++;
-    loadOneImage(job);
+    requestPool.run(() => new Promise(resolve => loadOneImage(job, resolve)), activeController?.signal)
+      .catch(() => { activeLoads = Math.max(0, activeLoads - 1); drainQueue(); });
   }
 }
 
-function loadOneImage(job) {
+function loadOneImage(job, finish) {
   const img = job.img;
   const isCurrent = () => job.generation === renderGeneration
     && img.isConnected
     && img.dataset.url === job.sourceUrl;
   if (!isCurrent()) {
     activeLoads = Math.max(0, activeLoads - 1);
+    finish();
     drainQueue();
     return;
   }
@@ -495,6 +507,7 @@ function loadOneImage(job) {
     img.onerror = null;
     if (activeImageCancels.get(img) === cancel) activeImageCancels.delete(img);
     activeLoads = Math.max(0, activeLoads - 1);
+    finish();
     drainQueue();
     return true;
   };
@@ -517,18 +530,11 @@ function loadOneImage(job) {
     if (skel) skel.classList.add('gone');
   };
   const retryOrFail = function() {
+    img.removeAttribute('src');
     if (!release() || !isCurrent()) return;
-    if (job.retries < 2) {
-      job.retries++;
-      const retryUrl = new URL(job.sourceUrl, window.location.origin);
-      retryUrl.searchParams.set('_retry', `${Date.now()}-${job.retries}`);
-      job.url = `${retryUrl.pathname}${retryUrl.search}`;
-      setTimeout(() => {
-        if (!isCurrent()) return;
-        loadQueue.unshift(job);
-        drainQueue();
-      }, 1000 * job.retries);
-    } else {
+    // Native img cannot inspect Retry-After. Never automatically amplify a
+    // busy backend with PNG retries; the explicit Retry button remains.
+    {
       if (card) {
         card.classList.remove('retrying');
         card.classList.add('failed');
@@ -578,6 +584,7 @@ function retryImage(imageId) {
 }
 
 function observeImages() {
+  if (blockedChartsGeneration === renderGeneration) return;
   const images = Array.from(document.querySelectorAll('#graphGrid img[data-url]'));
   if (imageObserver) {
     imageObserver.disconnect();
@@ -692,7 +699,51 @@ function statsItemKey(item) {
 }
 
 function storedStatsKey(dur) {
-  return `ipppping.stats.v2.${dur}`;
+  return `ipppping.stats.p1.${dur}`;
+}
+
+function rememberStats(key, data, cachedAt = Date.now()) {
+  const bytes = JSON.stringify(data).length * 2 + key.length * 2;
+  if (statsLRU.has(key)) statsCacheBytes -= statsLRU.get(key);
+  statsLRU.delete(key);
+  statsCache[key] = data;
+  statsCacheTimes[key] = cachedAt;
+  statsLRU.set(key, bytes);
+  statsCacheBytes += bytes;
+  while (statsLRU.size > 1024 || statsCacheBytes > MAX_STATS_CACHE_BYTES) {
+    const oldest = statsLRU.keys().next().value;
+    statsCacheBytes -= statsLRU.get(oldest);
+    statsLRU.delete(oldest);
+    delete statsCache[oldest];
+    delete statsCacheTimes[oldest];
+  }
+}
+
+function showCachedStat(pair, dur, animate = true) {
+  const key = statsCacheKey(pair, dur);
+  if (!statsCache[key]) return false;
+  if (statsLRU.has(key)) { const size = statsLRU.get(key); statsLRU.delete(key); statsLRU.set(key, size); }
+  showStat(statsIdFor(pair), statsCache[key], animate);
+  paintDataState(statsIdFor(pair), statsCache[key], statsCacheTimes[key], statsFailures.get(key));
+  return true;
+}
+
+function paintDataState(id, data, cachedAt, error) {
+  const card = document.getElementById(id)?.closest('.card');
+  const status = card?.querySelector('.data-state');
+  if (!status) return;
+  const state = RequestState.dataStatus(data, cachedAt, Date.now(), error);
+  status.dataset.state = state.state;
+  const text = state.label + (state.timestamp
+    ? ` · ${measurementTimeFormat.format(new Date(state.timestamp * 1000))} UTC+08:00` : '');
+  if (status.textContent !== text) status.textContent = text;
+}
+
+function refreshVisibleDataStates() {
+  currentPairs.forEach(pair => {
+    const key = statsCacheKey(pair);
+    if (statsCache[key]) paintDataState(statsIdFor(pair), statsCache[key], statsCacheTimes[key], statsFailures.get(key));
+  });
 }
 
 function cacheBatchItems(items, dur, cachedAt = Date.now()) {
@@ -702,8 +753,7 @@ function cacheBatchItems(items, dur, cachedAt = Date.now()) {
     outcomes.set(itemKey, item.error || null);
     if (!item.stats) return;
     const key = `${item.source}_${item.target}_${item.type}_${dur}`;
-    statsCache[key] = item.stats;
-    statsCacheTimes[key] = cachedAt;
+    rememberStats(key, item.stats, cachedAt);
   });
   return outcomes;
 }
@@ -713,7 +763,9 @@ function restoreStoredStats(dur) {
     const raw = sessionStorage.getItem(storedStatsKey(dur));
     if (!raw) return;
     const stored = JSON.parse(raw);
-    if (!stored || !Array.isArray(stored.items) || Date.now() - stored.cachedAt > STORED_STATS_TTL_MS) return;
+    if (raw.length > 500000 || !stored || !Array.isArray(stored.items) || stored.items.length > 500
+      || !Number.isFinite(stored.cachedAt) || stored.cachedAt > Date.now()
+      || Date.now() - stored.cachedAt > STORED_STATS_TTL_MS) return;
     cacheBatchItems(stored.items, dur, stored.cachedAt);
   } catch (_) {
     // Storage can be unavailable in hardened browsing modes; memory cache remains.
@@ -726,7 +778,7 @@ function primeCardsFromCache(pairs, dur, animate = true) {
   pairs.forEach(pair => {
     const key = statsCacheKey(pair, dur);
     const cached = statsCache[key];
-    if (cached) showStat(statsIdFor(pair), cached, animate);
+    if (cached) showCachedStat(pair, dur, animate);
     else document.getElementById(statsIdFor(pair))?.classList.add('stats-pending');
     if (!cached || now - (statsCacheTimes[key] || 0) > CLIENT_STATS_TTL_MS) allFresh = false;
   });
@@ -741,8 +793,10 @@ function paintStatsCards(pairs, dur, generation, outcomes = new Map(), animate =
     for (; index < end; index++) {
       const pair = pairs[index];
       const key = statsCacheKey(pair, dur);
-      if (statsCache[key]) showStat(statsIdFor(pair), statsCache[key], animate);
-      else if (outcomes.has(statsItemKey(pair))) showStatError(statsIdFor(pair));
+      const error = outcomes.get(statsItemKey(pair));
+      if (error) statsFailures.set(key, error);
+      else if (outcomes.has(statsItemKey(pair))) statsFailures.delete(key);
+      if (!showCachedStat(pair, dur, animate) && outcomes.has(statsItemKey(pair))) showStatError(statsIdFor(pair), error);
     }
     if (index < pairs.length) requestAnimationFrame(paint);
   };
@@ -751,20 +805,14 @@ function paintStatsCards(pairs, dur, generation, outcomes = new Map(), animate =
 
 async function refreshStatsBatch(nodeIds, pairs, dur, generation, signal, anchor = null) {
   const animateStats = generation !== suppressStatsAnimationGeneration;
-  if (primeCardsFromCache(pairs, dur, animateStats)) {
-    batchLoadingGeneration = -1;
-    pairGroupRanges = computeGroupRanges(pairs, dur);
-    if (chartsEnabled()) {
-      renderGrid({ animate: animateStats, animateLayout: false, preserveRequest: true, hydrate: false, loadCharts: true });
-    }
-    return;
-  }
+  // An explicit Show Results is a refresh even when cached values are young.
+  primeCardsFromCache(pairs, dur, animateStats);
 
   const graphSize = graphSizeParams();
   let data;
   try {
     data = await fetchJson(requestUrl('/api/stats-batch.json', {
-      nodes: nodeIds.join(','), dur, w: graphSize.w, h: graphSize.h,
+      nodes: nodeIds.join(','), dur, w: graphSize.w, h: graphSize.h, state: 'p1',
       ...(anchor ? { anchor } : {})
     }), signal, 30000);
     if (!data || !Array.isArray(data.items)) throw new Error('invalid batch response');
@@ -773,22 +821,32 @@ async function refreshStatsBatch(nodeIds, pairs, dur, generation, signal, anchor
     if (generation !== renderGeneration) return;
     batchLoadingGeneration = -1;
     pairGroupRanges = computeGroupRanges(pairs, dur);
-    // Compatibility fallback for an older or temporarily unavailable backend.
-    renderGrid({
-      animate: animateStats,
-      animateLayout: false,
-      preserveRequest: true,
-      hydrate: true,
-      loadCharts: chartsEnabled()
-    });
+    // Only a missing/unsupported endpoint is a compatibility fallback.
+    // Overload, timeouts, malformed JSON and network failures never fan out.
+    if ([404, 501].includes(error.status)) {
+      individualFallbackGeneration = generation;
+      renderGrid({
+        animate: animateStats,
+        animateLayout: false,
+        preserveRequest: true,
+        hydrate: true,
+        loadCharts: chartsEnabled()
+      });
+    } else {
+      blockedChartsGeneration = generation;
+      const failures = new Map(pairs.map(pair => [statsItemKey(pair), 'refresh_failed']));
+      paintStatsCards(pairs, dur, generation, failures, false);
+    }
     return;
   }
 
   if (generation !== renderGeneration) return;
   const outcomes = cacheBatchItems(data.items, dur);
+  pairs.forEach(pair => { if (!outcomes.has(statsItemKey(pair))) outcomes.set(statsItemKey(pair), 'missing_response'); });
   try {
     // Persist only the user's requested selection, never an all-node snapshot.
-    sessionStorage.setItem(storedStatsKey(dur), JSON.stringify({ cachedAt: Date.now(), items: data.items }));
+    const stored = JSON.stringify({ cachedAt: Date.now(), items: data.items });
+    if (stored.length <= 500000) sessionStorage.setItem(storedStatsKey(dur), stored);
   } catch (_) { /* Optional cache; live results remain available. */ }
 
   pairGroupRanges = computeGroupRanges(pairs, dur);
@@ -810,6 +868,13 @@ async function showGraphs() {
   const pairingChanged = draftPairMode !== appliedPairMode || nextAnchor !== appliedAnchor;
   const generation = ++renderGeneration;
   if (activeController) activeController.abort();
+  imageObserver?.disconnect();
+  imageObserver = null;
+  loadQueue = [];
+  for (const cancel of [...activeImageCancels.values()]) cancel();
+  statsFailures.clear();
+  individualFallbackGeneration = -1;
+  blockedChartsGeneration = -1;
   activeController = new AbortController();
   const signal = activeController.signal;
   if (isMobile()) {
@@ -1118,6 +1183,7 @@ function cardContentMarkup(pair, charts) {
           <div class="stats" id="${statsIdFor(pair)}"></div>
         </div>
        </div>
+       <div class="data-state" aria-label="Measurement status">Waiting for measurements…</div>
        ${chartMarkup}`;
 }
 
@@ -1185,14 +1251,17 @@ function syncChartSource(card, pair) {
 function hydrateCard(card, pair, charts, generation, signal) {
   const key = `${pair.source}_${pair.target}_${pair.type}_${selectedDuration}`;
   const statsId = statsIdFor(pair);
-  if (statsCache[key]) {
-    showStat(statsId, statsCache[key], generation !== suppressStatsAnimationGeneration);
-  } else if (batchLoadingGeneration === generation) {
+  const cached = showCachedStat(pair, selectedDuration, generation !== suppressStatsAnimationGeneration);
+  if (batchLoadingGeneration === generation && !cached) {
     card.querySelector('.stats')?.classList.add('stats-pending');
-  } else if (card.dataset.fetchGeneration !== String(generation)) {
+  } else if (individualFallbackGeneration === generation
+    && (!cached || Date.now() - statsCacheTimes[key] > CLIENT_STATS_TTL_MS)
+    && card.dataset.fetchGeneration !== String(generation)) {
     card.querySelector('.stats')?.classList.add('stats-pending');
     card.dataset.fetchGeneration = String(generation);
-    setTimeout(() => fetchStat(pair, statsId, selectedDuration, generation, signal), 40);
+    fetchStat(pair, statsId, selectedDuration, generation, signal);
+  } else if (!cached && statsFailures.has(key)) {
+    showStatError(statsId, statsFailures.get(key));
   }
   if (charts && batchLoadingGeneration !== generation) syncChartSource(card, pair);
 }
@@ -1273,53 +1342,58 @@ function renderGrid({ animate = true, animateLayout = animate, preserveRequest =
 }
 
 function fetchStat(pair, id, dur, generation, signal) {
+  if (signal?.aborted || generation !== renderGeneration) return;
   const key = `${pair.source}_${pair.target}_${pair.type}_${dur}`;
-  if (statsCache[key]) {
-    showStat(id, statsCache[key], generation !== suppressStatsAnimationGeneration);
+  if (statsCache[key] && Date.now() - statsCacheTimes[key] <= CLIENT_STATS_TTL_MS) {
+    showCachedStat(pair, dur, generation !== suppressStatsAnimationGeneration);
     return;
   }
   const graphSize = graphSizeParams();
   fetchJson(requestUrl('/api/stats', {
-    source: pair.source, target: pair.target, type: pair.type, dur,
+    source: pair.source, target: pair.target, type: pair.type, dur, state: 'p1',
     w: graphSize.w, h: graphSize.h
   }), signal)
     .then(d => {
       if (generation !== renderGeneration) return;
-      if (d.error) return;
-      statsCache[key] = d;
-      statsCacheTimes[key] = Date.now();
-      showStat(id, d, generation !== suppressStatsAnimationGeneration);
+      if (d.error) throw new Error('Invalid statistic response');
+      rememberStats(key, d);
+      statsFailures.delete(key);
+      showCachedStat(pair, dur, generation !== suppressStatsAnimationGeneration);
     }).catch(error => {
       if (error.name === 'AbortError') return;
-      if (generation === renderGeneration) showStatError(id);
+      if (generation === renderGeneration) {
+        statsFailures.set(key, error.status === 404 ? 'no_data' : 'refresh_failed');
+        if (!showCachedStat(pair, dur, false)) showStatError(id, statsFailures.get(key));
+      }
     });
 }
 
-function showStatError(id) {
+function showStatError(id, error = 'refresh_failed') {
   const el = document.getElementById(id);
   if (el) {
     const items = ['current', 'avg', 'min', 'max', 'loss'].map((label, i) =>
-      `<span class="stat-item ${i === 0 ? 'stat-primary' : 'stat-secondary'}${i === 4 ? ' loss-bad' : ''}">` +
+      `<span class="stat-item ${i === 0 ? 'stat-primary' : 'stat-secondary'}">` +
       `<span class="stat-label">${label}</span>` +
-      `<span class="stat-value">${i === 0 ? 'N/A' : '-'}</span></span>`
+      `<span class="stat-value">—</span></span>`
     );
     el.innerHTML = items[0] + `<div class="stat-support">${items.slice(1).join('')}</div>`;
     el.classList.remove('stats-pending');
     releaseCardFrame(el.closest('.card'));
+    paintDataState(id, null, null, error);
   }
 }
 
 function showStat(id, d, animate = true) {
   const el = document.getElementById(id);
   if (!el) return;
-  const lc = d.loss_pct > 5 ? 'loss-bad' : d.loss_pct > 0 ? 'loss-warn' : 'loss-ok';
+  const lc = !Number.isFinite(d.loss_pct) ? '' : d.loss_pct > 5 ? 'loss-bad' : d.loss_pct > 0 ? 'loss-warn' : 'loss-ok';
   const latencyValues = [d.current_ms, d.avg_ms, d.min_ms, d.max_ms].filter(Number.isFinite);
   const currentMs = Number.isFinite(d.current_ms)
     ? d.current_ms
-    : (Number.isFinite(d.avg_ms) ? d.avg_ms : null);
+    : null;
   const useUs = latencyValues.length > 0 && Math.max(...latencyValues) < 1;
   const fmt = v => {
-    if (!Number.isFinite(v)) return '<span class="stat-number">-</span>';
+    if (!Number.isFinite(v)) return '<span class="stat-number">—</span>';
     return useUs
       ? `<span class="stat-number">${(v * 1000).toFixed(0)}</span><span class="stat-unit">\u03bcs</span>`
       : `<span class="stat-number">${v.toFixed(1)}</span><span class="stat-unit">ms</span>`;
@@ -1333,7 +1407,9 @@ function showStat(id, d, animate = true) {
     + item('avg', fmt(d.avg_ms), 'stat-secondary')
     + item('min', fmt(d.min_ms), 'stat-secondary')
     + item('max', fmt(d.max_ms), 'stat-secondary')
-    + item('loss', `<span class="stat-number">${d.loss_pct.toFixed(1)}</span><span class="stat-unit">%</span>`, `stat-secondary ${lc}`)
+    + item('loss', Number.isFinite(d.loss_pct)
+      ? `<span class="stat-number">${d.loss_pct.toFixed(1)}</span><span class="stat-unit">%</span>`
+      : '<span class="stat-number">—</span>', `stat-secondary ${lc}`)
     + `</div>`;
   el.classList.remove('stat-updated', 'stats-pending');
   if (animate) {

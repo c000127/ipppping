@@ -96,6 +96,15 @@ The current visual contract is a dark, dense monitoring console:
 
 ## Service boundaries
 
+### P1 (deployed 2026-09-22)
+
+The P1 frontend shares a four-slot request pool across JSON and PNG, removes
+overload fan-out, and explicitly requests `state=p1` statistics. Raw RRD input
+metadata distinguishes the latest measurement from graph-consolidated history.
+Legacy requests retain their original five-field response contract. See
+[the implementation report](FRONTEND_P0_P1_REPORT.md) for semantics, measured
+costs, tests, deployment checks, and remaining long-duration validation.
+
 `ipppping.service` should bind to loopback and run as a dedicated unprivileged
 user that can read the API RRD tree. SmokePing requires its own permissions,
 raw-network capabilities, and configuration. The reverse proxy is the only

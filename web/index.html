@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,viewport-fit=cover">
 <meta name="description" content="ipPping — Real-time network latency matrix between VPS nodes.">
 <title>ipPping — Latency Matrix</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260908-dual-stack-results">
+  <link rel="stylesheet" href="/static/styles.css?v=20260922-p1">
 </head>
 <body>
 <div id="app">
@@ -20,7 +20,7 @@
       <div class="brand">ip<span>Pping</span></div>
     </div>
     <div class="topbar-right">
-      <div class="live-dot"></div>
+      <span class="refresh-mode" title="Measurements update only when you submit a query">Manual refresh</span>
       <span class="clock" id="clock"></span>
     </div>
   </header>
@@ -71,7 +71,7 @@
     <main class="main" id="mainArea">
       <div class="empty" id="emptyState">
         <div class="empty-title">Latency Matrix</div>
-        <div class="empty-sub">Select nodes and click "Show Results" to view real-time RTT across your infrastructure.</div>
+        <div class="empty-sub">Select nodes and click "Show Results" to view measurements. Refresh manually to retrieve new data.</div>
       </div>
     </main>
   </div>
@@ -79,6 +79,7 @@
 </div>
 <div class="toast-box" id="toastBox"></div>
 
-<script src="/static/app.js?v=20260908-dual-stack-results" defer></script>
+<script src="/static/request-state.js?v=20260922-p1" defer></script>
+<script src="/static/app.js?v=20260922-p1" defer></script>
 </body>
 </html>

@@ -7,6 +7,7 @@ import re
 import threading
 import urllib.parse
 import math
+import time
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from socketserver import ThreadingMixIn
@@ -188,17 +189,21 @@ def rrd_fetch_stats(rrd_path, dur=3600, w=900, h=320):
                     vals.append(v if math.isfinite(v) else None)
                 except ValueError:
                     pass
-            if len(vals) >= 5 and vals[4] is not None:
+            if len(vals) >= 5:
                 def rounded(value, digits=2):
                     return round(value, digits) if value is not None else None
 
                 result = {
-                    "current_ms": rounded(vals[0]),
+                    "current_ms": None,
+                    "last_valid_ms": rounded(vals[0]),
                     "avg_ms": rounded(vals[1]),
                     "max_ms": rounded(vals[2]),
                     "min_ms": rounded(vals[3]),
-                    "loss_pct": round(vals[4] * 5, 1),
+                    "loss_pct": rounded(vals[4] * 5, 1) if vals[4] is not None else None,
                 }
+                # LAST ignores unknown buckets. Never present an older valid RTT
+                # as the current measurement; lastupdate contains the raw input.
+                result.update(rrd_latest_measurement(rrd_path))
                 cache_put(STATS_CACHE, cache_key, result)
                 return result
     except (OSError, subprocess.SubprocessError) as exc:
@@ -213,6 +218,56 @@ def _parse_rrd_value(token):
     except ValueError:
         return None
     return v if math.isfinite(v) else None
+
+
+def parse_lastupdate(output):
+    """Parse raw RRD input, not a consolidated bucket or filesystem mtime."""
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if len(lines) != 2:
+        raise ValueError("invalid lastupdate response")
+    names = lines[0].split()
+    stamp, separator, values = lines[1].partition(":")
+    values = values.split()
+    if not separator or len(names) != len(values) or not {"median", "loss"}.issubset(names):
+        raise ValueError("invalid lastupdate columns")
+    timestamp = int(stamp)
+    ds = dict(zip(names, map(_parse_rrd_value, values)))
+    count = sum(bool(re.fullmatch(r"ping\d+", name)) for name in names)
+    if timestamp <= 0 or not count:
+        raise ValueError("invalid lastupdate metadata")
+    measured = ds["loss"] is not None or ds["median"] is not None
+    return {
+        "rrd_updated_at": timestamp,
+        "measurement_updated_at": timestamp if measured else None,
+        "current_ms": round(ds["median"] * 1000, 3) if ds["median"] is not None else None,
+        "current_loss_pct": round(ds["loss"] * 100 / count, 1) if ds["loss"] is not None else None,
+        "measurement_state": "measured" if measured else "missing",
+        "pings": count,
+    }
+
+
+@serialized_keys
+def rrd_latest_measurement(rrd_path):
+    key = ("latest", rrd_path, os.stat(rrd_path).st_mtime_ns)
+    cached = cache_get(STATS_CACHE, key, STATS_CACHE_TTL)
+    if cached is not None:
+        return cached
+    result = {
+        "rrd_updated_at": None, "measurement_updated_at": None,
+        "current_ms": None, "current_loss_pct": None,
+        "measurement_state": "unknown", "pings": None,
+    }
+    try:
+        with GRAPH_SEMAPHORE:
+            output = subprocess.run(["rrdtool", "lastupdate", str(rrd_path)],
+                                    capture_output=True, timeout=5, text=True, check=True)
+        result.update(parse_lastupdate(output.stdout))
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        LOG.warning("lastupdate failed for %s: %s", rrd_path, exc)
+    result.update({"observed_at": int(time.time()), "stale_after_seconds": 600,
+                   "freshness_source": "rrd_lastupdate", "stats_semantics": "p1-raw-current"})
+    cache_put(STATS_CACHE, key, result)
+    return result
 
 
 @serialized_keys
@@ -272,7 +327,7 @@ def rrd_fetch_series(rrd_path, dur=3600):
         median.append(None if med is None else round(med * 1000, 3))
         smin.append(None if not valid else round(min(valid) * 1000, 3))
         smax.append(None if not valid else round(max(valid) * 1000, 3))
-        loss.append(None if loss_v is None else round(loss_v * 5, 1))
+        loss.append(None if loss_v is None else round(loss_v * 100 / ping_count, 1))
         coverage.append(round(len(valid) / ping_count, 3))
 
     # ─ Trailing rolling stddev of median → jitter (ms), window 5 ────
@@ -285,17 +340,19 @@ def rrd_fetch_series(rrd_path, dur=3600):
             var = sum((x - mu) ** 2 for x in win) / len(win)
             jitter[i] = round(math.sqrt(var), 3)
 
-    # ─ Summary mirrors /api/stats so the two stay consistent ────────
+    # Historical summary uses fetch buckets, NOT graph pixel consolidation.
     valid_med = [m for m in median if m is not None]
     valid_loss = [l for l in loss if l is not None]
     summary = {
-        "current_ms": valid_med[-1] if valid_med else None,
+        "current_ms": None,
         "average_ms": round(sum(valid_med) / len(valid_med), 2) if valid_med else None,
         "min_ms": round(min(valid_med), 2) if valid_med else None,
         "max_ms": round(max(valid_med), 2) if valid_med else None,
-        "loss_pct": round(sum(valid_loss) / len(valid_loss), 1) if valid_loss else 0,
+        "loss_pct": round(sum(valid_loss) / len(valid_loss), 1) if valid_loss else None,
         "coverage": round(sum(coverage) / len(coverage), 3) if coverage else 0,
     }
+    latest = rrd_latest_measurement(rrd_path)
+    summary.update(latest)
     result = {
         "timestamps": timestamps,
         "median": median,
@@ -305,7 +362,11 @@ def rrd_fetch_series(rrd_path, dur=3600):
         "jitter": jitter,
         "coverage": coverage,
         "summary": summary,
+        # Keep the legacy bucket-grid field for API compatibility. New clients
+        # must use explicitly sourced measurement_updated_at, never this field.
         "last_update": timestamps[-1] if timestamps else 0,
+        "last_update_semantics": "legacy_bucket_end_not_measurement",
+        **latest,
         "unit": "ms",
     }
     cache_put(STATS_CACHE, cache_key, result)
@@ -411,6 +472,18 @@ def handle_pairs(params):
     except ValueError as exc:
         return json_error("invalid_selection", str(exc), HTTPStatus.BAD_REQUEST)
 
+def stats_response_view(stats, include_state=False):
+    """P1 is opt-in: cached old JS cannot format a nullable loss value."""
+    if stats is None:
+        return None
+    if include_state:
+        return stats
+    if stats.get("loss_pct") is None:
+        return None  # Preserve the legacy error response for empty windows.
+    return {"current_ms": stats.get("last_valid_ms", stats.get("current_ms")),
+            **{key: stats.get(key) for key in ("avg_ms", "min_ms", "max_ms", "loss_pct")}}
+
+
 def handle_stats(params):
     """Return quick stats for a source->target pair."""
     try:
@@ -424,13 +497,13 @@ def handle_stats(params):
     except FileNotFoundError:
         return json_error("no_data", "no RRD data is available", HTTPStatus.NOT_FOUND)
 
-    stats = rrd_fetch_stats(rrd_path, dur, w, h)
+    stats = stats_response_view(rrd_fetch_stats(rrd_path, dur, w, h), first_param(params, "state") == "p1")
     if stats:
         return json.dumps(stats).encode(), 200
     return json_error("rrd_error", "could not read RRD data", HTTPStatus.BAD_GATEWAY)
 
 
-def _batch_stats_item(pair, dur, w, h):
+def _batch_stats_item(pair, dur, w, h, include_state=False):
     item = {
         "source": pair["source"],
         "target": pair["target"],
@@ -445,7 +518,7 @@ def _batch_stats_item(pair, dur, w, h):
         item["error"] = "no_data"
         return item
 
-    stats = rrd_fetch_stats(rrd_path, dur, w, h)
+    stats = stats_response_view(rrd_fetch_stats(rrd_path, dur, w, h), include_state)
     if stats is None:
         item["error"] = "rrd_error"
     else:
@@ -476,7 +549,8 @@ def handle_stats_batch(params):
     if not BATCH_SLOTS.acquire(blocking=False):
         return json_error("busy", "statistics capacity reached; retry later", HTTPStatus.SERVICE_UNAVAILABLE)
     try:
-        items = list(windowed_map(BATCH_EXECUTOR, lambda pair: _batch_stats_item(pair, dur, w, h), pairs, MAX_GRAPH_WORKERS))
+        include_state = first_param(params, "state") == "p1"
+        items = list(windowed_map(BATCH_EXECUTOR, lambda pair: _batch_stats_item(pair, dur, w, h, include_state), pairs, MAX_GRAPH_WORKERS))
     finally:
         BATCH_SLOTS.release()
     return json.dumps({"items": items}).encode(), HTTPStatus.OK
@@ -856,8 +930,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
 
-        elif path == "/static/styles.css" or path == "/static/app.js":
-            filename = "styles.css" if path.endswith(".css") else "app.js"
+        elif path in {"/static/styles.css", "/static/app.js", "/static/request-state.js"}:
+            filename = os.path.basename(path)
             content_type = "text/css; charset=utf-8" if filename.endswith(".css") else "text/javascript; charset=utf-8"
             try:
                 body = (WEB_DIR / filename).read_bytes()

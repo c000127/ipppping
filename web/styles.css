@@ -2563,3 +2563,7 @@ body {
 .grid.stats-only .route-badges .badge {
   font-size: 14px; padding: 3px 9px;
 }
+/* P1: measurement/transport state is separate from numeric history. */
+.refresh-mode { font-size: 12px; color: #b8b8b8; }
+.data-state { padding: 0 16px 8px; font-size: 12px; line-height: 1.5; color: #b8b8b8; overflow-wrap: anywhere; }
+.data-state[data-state="stale"], .data-state[data-state="error"] { color: #f0bc72; }

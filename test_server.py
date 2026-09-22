@@ -30,6 +30,10 @@ class RequestValidationTests(unittest.TestCase):
     def setUp(self):
         server.STATS_CACHE.clear()
         server.GRAPH_CACHE.clear()
+        # Legacy graph/series tests isolate the separate raw-input reader.
+        latest = patch.object(server, "rrd_latest_measurement", return_value={"current_ms": None})
+        self.latest = latest.start()
+        self.addCleanup(latest.stop)
 
     def test_external_web_assets_are_available(self):
         web_dir = server.WEB_DIR if server.WEB_DIR.exists() else Path(__file__).parent
@@ -250,16 +254,17 @@ class RequestValidationTests(unittest.TestCase):
         self.assertTrue(all(item.get("stats") == expected for item in data["items"]))
         self.assertEqual(fetch.call_count, 8)
 
-    def test_stats_reads_latest_valid_median_as_current(self):
+    def test_stats_current_comes_from_raw_measurement_not_graph_last(self):
         fake_rrd = Path(server.__file__)
         server.STATS_CACHE.clear()
+        self.latest.return_value = {"current_ms": 9.25}
         with patch("server.subprocess.run") as run:
             run.return_value.returncode = 0
             run.return_value.stdout = "1.25\n1.10\n1.50\n0.90\n0.0200\n"
             run.return_value.stderr = ""
             stats = server.rrd_fetch_stats(fake_rrd, 10800, 900, 320)
 
-        self.assertEqual(stats["current_ms"], 1.25)
+        self.assertEqual(stats["current_ms"], 9.25)
         self.assertEqual(stats["avg_ms"], 1.1)
         self.assertEqual(stats["loss_pct"], 0.1)
         command = run.call_args.args[0]
@@ -277,6 +282,7 @@ class RequestValidationTests(unittest.TestCase):
 
         self.assertEqual(stats, {
             "current_ms": None,
+            "last_valid_ms": None,
             "avg_ms": None,
             "max_ms": None,
             "min_ms": None,

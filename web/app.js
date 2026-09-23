@@ -271,17 +271,29 @@ function updatePairingControls() {
     const id = row.dataset.nodeId;
     const selected = document.getElementById('c_' + id)?.checked === true;
     const anchor = draftPairMode === 'fixed' && draftAnchors.has(id) && selected;
+    const previousAnchor = row.getAttribute('data-anchor');
     const button = row.querySelector('.node-anchor');
     row.classList.toggle('selection-anchorable', selected);
     row.classList.toggle('anchor-on', anchor);
-    row.setAttribute('data-anchor', String(anchor));
     if (button) {
       button.disabled = !selected;
       button.textContent = anchor ? 'Fixed' : 'Fix';
       button.setAttribute('aria-pressed', String(anchor));
       button.setAttribute('aria-label', `${anchor ? 'Remove' : 'Use'} ${row.querySelector('.node-label').textContent} ${anchor ? 'from' : 'as'} fixed nodes`);
       button.title = anchor ? 'Remove from fixed nodes' : 'Use as a fixed node';
+      if (previousAnchor !== null && previousAnchor !== String(anchor) && draftPairMode === 'fixed' && selected) {
+        const selecting = anchor;
+        const motionClass = selecting ? 'fixed-node-selecting' : 'fixed-node-deselecting';
+        const animationName = selecting ? 'fixed-node-select' : 'fixed-node-deselect';
+        button.classList.remove('fixed-node-selecting', 'fixed-node-deselecting');
+        void button.offsetWidth;
+        button.classList.add(motionClass);
+        button.addEventListener('animationend', event => {
+          if (event.target === button && event.animationName === animationName) button.classList.remove(motionClass);
+        }, { once: true });
+      }
     }
+    row.setAttribute('data-anchor', String(anchor));
   });
 }
 

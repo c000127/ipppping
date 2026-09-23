@@ -215,8 +215,18 @@ function verifyPublicHtml(body, pageName) {
     for (const id of ['akari_jp', 'datawave_akari_hk', 'google_dns'])
       await multi.locator(`label[for="c_${id}"]`).click();
     await multi.locator('[data-pair-mode="fixed"]').click();
-    for (const id of ['akari_jp', 'datawave_akari_hk'])
-      await multi.locator(`[data-anchor-node="${id}"]`).click();
+    const animatedAnchor = multi.locator('[data-anchor-node="akari_jp"]');
+    const anchorWidth = await animatedAnchor.evaluate(el => el.offsetWidth);
+    await animatedAnchor.click();
+    assert.equal(await animatedAnchor.getAttribute('aria-pressed'), 'true');
+    assert.equal(await animatedAnchor.evaluate(el => getComputedStyle(el).animationName), 'fixed-node-select');
+    assert.equal(await animatedAnchor.evaluate(el => el.offsetWidth), anchorWidth);
+    await animatedAnchor.click();
+    assert.equal(await animatedAnchor.getAttribute('aria-pressed'), 'false');
+    assert.equal(await animatedAnchor.evaluate(el => getComputedStyle(el).animationName), 'fixed-node-deselect');
+    assert.equal(await animatedAnchor.evaluate(el => el.offsetWidth), anchorWidth);
+    await animatedAnchor.click();
+    await multi.locator('[data-anchor-node="datawave_akari_hk"]').click();
     assert.match(await multi.locator('#selInfo').innerText(), /2 fixed.*4 results/);
     assert.equal(await multi.locator('#selFreshness').innerText(), 'Unapplied changes');
     assert.equal(await footerHeight(), initialFooterHeight);
@@ -241,7 +251,7 @@ function verifyPublicHtml(body, pageName) {
     assert.equal(await multi.locator('.card .badge-ext').count(), 4);
     assert.equal(await multi.locator('.card .data-state').count(), 0);
     await multi.screenshot({ path: path.join(output, 'multi-fixed-desktop.png'), fullPage: true });
-    const multiFixed = { cards: 4, fixed: 2, footerHeight: await footerHeight(), freshness: expectedFreshness };
+    const multiFixed = { cards: 4, fixed: 2, animation: 'selection-and-cancellation', footerHeight: await footerHeight(), freshness: expectedFreshness };
 
     assert.deepEqual(errors, []);
     const appCsp = csp.filter(event => !(

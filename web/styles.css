@@ -46,7 +46,7 @@ button:disabled { cursor: default; color: var(--text-dim); background: transpare
 .sidebar-foot .selection-controls, .sidebar-foot .pairing-mode, .sidebar-foot .view-mode { flex: 0 0 auto; margin: 0; }
 .sidebar-foot .go-btn { flex: 0 0 40px; }
 .sidebar-foot .sel-info { flex: 0 0 40px; margin: 0; }
-.sidebar-foot button, .sidebar-foot select, .node-anchor { transition: background-color var(--motion) ease, color var(--motion) ease, opacity var(--motion) ease; }
+.sidebar-foot button, .sidebar-foot select { transition: background-color var(--motion) ease, color var(--motion) ease, opacity var(--motion) ease; }
 .sidebar-inner, .sidebar-foot, .main { scrollbar-width: thin; scrollbar-color: var(--border-hi) transparent; }
 .section { margin-bottom: 18px; }
 .section-head { display: flex; justify-content: space-between; padding: 0 6px 8px; gap: 8px; }
@@ -61,9 +61,21 @@ button:disabled { cursor: default; color: var(--text-dim); background: transpare
 .node-cb { position: absolute; top: 50%; left: 4px; width: 1px; height: 1px; padding: 0; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .node-label { flex: 1; min-width: 0; color: var(--text); overflow-wrap: anywhere; font-size: 14px; }
 .node-protocols { display: flex; flex-wrap: wrap; gap: 3px; flex: 0 0 auto; max-width: 65px; }
-.node-anchor { display: none; padding: 2px 5px; font-size: 12px; flex: 0 0 auto; }
+.node-anchor { display: none; align-items: center; justify-content: center; width: 50px; padding: 2px 4px; font-size: 12px; flex: 0 0 50px; transition: background-color var(--motion) ease, color var(--motion) ease, opacity var(--motion) ease, transform var(--motion) ease, box-shadow var(--motion) ease; }
 .sidebar.pairing-fixed-mode .selection-anchorable .node-anchor { display: inline-flex; align-items: center; }
 .node-anchor[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+.node-anchor.fixed-node-selecting { animation: fixed-node-select 360ms cubic-bezier(.2,.8,.2,1); }
+.node-anchor.fixed-node-deselecting { animation: fixed-node-deselect 280ms ease-out; }
+@keyframes fixed-node-select {
+  0% { transform: scale(.92); box-shadow: 0 0 0 0 rgba(187,163,255,0); }
+  48% { transform: scale(1.08); box-shadow: 0 0 0 3px rgba(187,163,255,.24); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(187,163,255,0); }
+}
+@keyframes fixed-node-deselect {
+  0% { transform: scale(1.04); box-shadow: 0 0 0 2px rgba(187,163,255,.18); }
+  55% { transform: scale(.94); opacity: .72; }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(187,163,255,0); opacity: 1; }
+}
 .selection-controls { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .range-select { color: var(--text); background: var(--bg-hover); border: 0; border-radius: var(--control-radius); padding: 2px; font-size: 12px; }
 .pills, .pairing-mode, .view-mode { display: flex; gap: 2px; padding: 2px; background: var(--bg-hover); border-radius: 7px; min-width: 0; }

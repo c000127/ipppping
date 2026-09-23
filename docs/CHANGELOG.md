@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-23 — Fixed-node selection feedback
+
+- Added separate selection and cancellation animations for Fixed nodes, while
+  keeping the action button width stable and respecting reduced-motion settings.
+- Deployed after local and public Chrome regression checks; see the
+  [public release record](FRONTEND_PUBLIC_RELEASE.md).
+
 ## 2026-09-23 — Compact result status and metric alignment
 
 - Returned the sidebar controls to natural height, retaining only a fixed

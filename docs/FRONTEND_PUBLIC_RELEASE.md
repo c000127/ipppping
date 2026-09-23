@@ -171,6 +171,23 @@ Chrome 153 与 WebKit 26.5 多断点回归通过，Chrome axe 无违规；本地
 及八个指纹资源；移动实测数值/单位间隔 2px、无换行/溢出，单位距分隔线 46.1px。
 结果卡状态提示仍为 0，应用无页面错误，生产服务 active 且 NRestarts 为 0。
 
+### 2026-09-23 Fixed nodes 选择/取消动效
+
+Fixed 节点按钮选中时短暂弹性强调，取消时柔和回收；按钮固定为 50px 宽，避免
+`Fix`/`Fixed` 文案切换造成横向布局跳动。动效遵从系统 `prefers-reduced-motion`。
+
+发布资源为 `styles.12df13fdd1e91a31.css` 与 `app.e036d7b6d2eaa8be.js`；主页面
+SHA-256 `3617d0cf04b62daf4a00fc6eca7ce454190f6ec9e04b253f18276db4932d0bdf`，试用页
+SHA-256 `91a78c5e3535343e46b5079b454cbd6152781e4ffba56a171ecb9b65cd5bee09`。传输包
+SHA-256 `61cd7f81427bb5e1e0f687fe84e39cea254d08562ca6f720d35b5e95ce0a110f`，开发机与
+主控一致；staging `/root/ipppping-stage-fixed-nodes-0df5821b`，自动备份
+`/root/ipppping-backup-20260923T134453214317Z`。
+
+72 项 Python、4 项 Node、Chrome 153 构建产物回归通过；公网 Chrome 153 于
+13:45 UTC 核验两个页面及八个指纹资源，并实际验证选中/取消动效、按钮宽度稳定、
+双 Fixed 结果、图表和移动布局，应用页面无未捕获错误。部署后 API 保持 21 个剩余
+节点，三个已移除节点未重新出现；API 健康、SmokePing 容器运行中。
+
 ## 验证证据
 
 - 本地 Python 68 项、Node 请求状态 4 项、Chrome 构建产物主页面回归、

@@ -435,6 +435,24 @@ async function main() {
       assert.match(await page.locator('#selInfo').innerText(), /Select a non-fixed node/);
       assert.deepEqual(await footerGeometry(), initialFooter, 'validation message changed footer geometry');
       await page.locator('[data-anchor-node="test_2"]').click();
+      const fixedButton = page.locator('[data-anchor-node="test_2"]');
+      const fixedButtonWidth = await fixedButton.evaluate(el => el.offsetWidth);
+      await fixedButton.click();
+      assert.equal(await fixedButton.getAttribute('aria-pressed'), 'true');
+      assert.equal(await fixedButton.evaluate(el => getComputedStyle(el).animationName), 'fixed-node-select');
+      assert.equal(await fixedButton.evaluate(el => el.offsetWidth), fixedButtonWidth,
+        'fixing a node must not change the button width');
+      await fixedButton.click();
+      assert.equal(await fixedButton.getAttribute('aria-pressed'), 'false');
+      assert.equal(await fixedButton.evaluate(el => getComputedStyle(el).animationName), 'fixed-node-deselect');
+      assert.equal(await fixedButton.evaluate(el => el.offsetWidth), fixedButtonWidth,
+        'unfixing a node must not change the button width');
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await fixedButton.click();
+      assert.equal(await fixedButton.evaluate(el => getComputedStyle(el).animationName), 'none',
+        'fixed-node animation must respect reduced motion');
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await page.locator('[data-anchor-node="test_2"]').click();
       await page.locator('[data-anchor-node="external"]').click();
       await page.locator('[data-mode="charts"]').click();
       await page.locator('.axis-option').waitFor({ state: 'visible' });
@@ -454,7 +472,7 @@ async function main() {
       await page.locator('.view-mode-btn[data-mode="stats"]').click();
       await page.waitForTimeout(250);
       assert.deepEqual(await footerGeometry(), initialFooter, 'Results mode did not restore the compact footer');
-      report.cases.push({ case: 'multi-fixed-two-line-status-natural-footer-animated-drawer', pairs: 12, passed: true });
+      report.cases.push({ case: 'multi-fixed-selection-animation-two-line-status-natural-footer-animated-drawer', pairs: 12, passed: true });
     }
     await reset('busy'); await select();
     await page.waitForTimeout(3500);

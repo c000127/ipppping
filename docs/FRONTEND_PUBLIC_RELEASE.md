@@ -134,19 +134,20 @@ Git 忽略的 `test-results/production-p2p3/`。节点、采样、凭据与 RRD 
 过期或刷新失败等说明文字。缺失/未知值仍以 `—` 表示，LOSS 百分比指标保留；
 侧栏最新更新时间与未提交状态不变。一行五列时五项数字维持同字号。只有左侧
 CURRENT、右侧四项 2×2 的布局（窄屏 Results/Charts 与宽屏 Results），CURRENT
-数值放大为其它指标的两倍。宽屏 Charts 仍是五列，不放大。
+数值字号为其它指标的 1.66 倍。宽屏 Charts 仍是五列，不放大。
 
-本次资源为 `styles.6ba475af2c1d5101.css`、`app.8e4fc24c16c31d92.js`；主页面
-SHA-256 `f53c096329dd3f92328299d3466716e36061773d10e104b11494352bd4ac2115`，
-试用页 SHA-256 `fb6a7ac44dcd8c8b321d1a8814d7db857eb4bb1a8098eb38113995507e855e6f`。
-传输包 SHA-256 为 `79b28c611410e408be6527e3573df61e85b7e5d99f445e037bc587718d753ad6`，
-开发机与主控机一致。主控 staging 为 `/root/ipppping-stage-CoIYsR`，安装器自动备份
-为 `/root/ipppping-backup-20260923T113909206935Z`。
+本次最终字号调整发布资源为 `styles.94695086f2c542c9.css`、
+`app.8e4fc24c16c31d92.js`；主页面 SHA-256
+`60e3625651b1b885fd0742e8c1a5609016caa3a84a68297202fc8d483c97b7fe`，试用页
+SHA-256 `409ed961c5f626b27716159414e40e14703f90a098eb5f6dde5fe5ff38bb4458`。
+传输包 SHA-256 为 `2501899784d5b289a6cd57eed35a1451210b25d3ebbc52f9dc09bcd3426f8cff`，
+开发机与主控机一致。主控 staging 为 `/root/ipppping-stage-4AiT4f`，安装器自动备份
+为 `/root/ipppping-backup-20260923T115403683074Z`。
 
 本地 72 项 Python unittest、4 项 Node 测试、Chrome 153 与 WebKit 26.5 浏览器
-回归通过；Chrome axe 无违反项。公网 Chrome 153 于 2026-09-23 11:39 UTC
+回归通过；Chrome axe 无违反项。公网 Chrome 153 于 2026-09-23 11:54 UTC
 核对两个 HTML 与八个指纹资源，并通过真实结果、PNG、Chart Trial、侧栏时间及
-多 Fixed 验证。桌面五列五项数值均 18px；390px 窄屏 CURRENT 为 32px、其余四项
+多 Fixed 验证。桌面五列五项数值均 18px；390px 窄屏 CURRENT 为 26.56px、其余四项
 16px；无横向溢出，窄屏分隔线与右侧文字边缘误差 0px。结果卡状态元素数为 0、
 状态文案匹配为 false。服务 `ipppping` 健康，安装后 NRestarts 为 0。结果报告和
 截图位于 Git 忽略的 `test-results/production-p2p3/`；节点配置、采样、凭据及 RRD

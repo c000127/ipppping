@@ -159,7 +159,7 @@ button:disabled { cursor: default; color: var(--text-dim); background: transpare
   .stats-only .stat-support { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .stats-only .stat-support .stat-item { border: 0; padding: 0; align-items: flex-end; text-align: right; }
   .stats-only .stat-support .stat-value { justify-content: flex-end; }
-  .stats-only .stat-primary .stat-number { font-size: 2em; }
+  .stats-only .stat-primary .stat-number { font-size: 1.66em; }
 }
 @container main (max-width: 768px) {
   .card-head { padding: 12px; gap: 8px; }
@@ -175,7 +175,7 @@ button:disabled { cursor: default; color: var(--text-dim); background: transpare
   .stat-support .stat-value { justify-content: flex-end; }
   .stat-primary { align-self: stretch; align-items: flex-start; border-right: 1px solid var(--border); padding-block: 0; padding-right: 8px; text-align: left; }
   .stat-primary .stat-value { justify-content: flex-start; }
-  .stat-primary .stat-number { font-size: 2em; }
+  .stat-primary .stat-number { font-size: 1.66em; }
 }
 @media (max-width: 768px) {
   :root { --control-height: 40px; --sidebar-w: 100vw; }

@@ -157,8 +157,11 @@ async function main() {
         assert.equal(visual.metricSizes.length, 1, `metric sizes differ at ${width}px`);
         const primaryNumberSize = visual.metricNumberSizes[0];
         const secondaryNumberSize = visual.metricNumberSizes[1];
-        assert.equal(primaryNumberSize, visual.mainWidth <= 460 || visual.mainWidth >= 1360
-          ? secondaryNumberSize * 2 : secondaryNumberSize, `CURRENT numeric size is incorrect at ${width}px`);
+        if (visual.mainWidth <= 460 || visual.mainWidth >= 1360) {
+          assert.ok(Math.abs(primaryNumberSize / secondaryNumberSize - 1.66) < 0.01,
+            `CURRENT numeric size should be 1.66x at ${width}px`);
+        } else assert.equal(primaryNumberSize, secondaryNumberSize,
+          `five-column CURRENT numeric size should remain unchanged at ${width}px`);
         assert.equal(visual.cardBorder, '0px');
         assert.equal(visual.groupBorder, '0px');
         assert.equal(visual.routeStatsTop, visual.mainWidth >= 1360 ? '0px' : '1px');
@@ -476,8 +479,8 @@ async function main() {
       });
       assert.equal(narrowChartMetricScale.statsOnly, false);
       assert.ok(narrowChartMetricScale.mainWidth <= 460);
-      assert.equal(narrowChartMetricScale.primary, narrowChartMetricScale.secondary * 2,
-        'CURRENT must be double-sized in the left-plus-2x2 narrow layout');
+      assert.ok(Math.abs(narrowChartMetricScale.primary / narrowChartMetricScale.secondary - 1.66) < 0.01,
+        'CURRENT must be 1.66x in the left-plus-2x2 narrow layout');
       await page.setViewportSize({ width: 1800, height: 900 });
       const chartMetricScale = await page.evaluate(() => {
         const card = document.querySelector('.card');

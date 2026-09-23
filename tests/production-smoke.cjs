@@ -50,7 +50,9 @@ const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
     await page.screenshot({ path: path.join(output, 'results-mobile.png'), fullPage: true });
     const mobileSizes = await page.locator('.card').first().locator('.stat-number').evaluateAll(items =>
       items.map(el => parseFloat(getComputedStyle(el).fontSize)));
-    assert.deepEqual(mobileSizes, [32, 16, 16, 16, 16], 'narrow left-plus-2x2 layout must emphasize CURRENT');
+    assert.ok(Math.abs(mobileSizes[0] / mobileSizes[1] - 1.66) < 0.01,
+      'narrow left-plus-2x2 layout must emphasize CURRENT at 1.66x');
+    assert.deepEqual(mobileSizes.slice(1), [16, 16, 16, 16]);
     await page.setViewportSize({ width: 1440, height: 900 });
     const query = '/api/stats?source=akari_jp&target=google_dns&type=v6&dur=10800';
     const old = await (await page.request.get(origin + query)).json();

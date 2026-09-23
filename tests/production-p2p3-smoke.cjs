@@ -120,9 +120,11 @@ function verifyPublicHtml(body, pageName) {
         return Math.max(Math.abs(line.top - Math.min(...text.map(rect => rect.top))),
           Math.abs(line.bottom - Math.max(...text.map(rect => rect.bottom))));
       })() }));
-    assert.deepEqual({ ...mobile, dividerTextGap: undefined }, { metricSizes: ['16px'], routeStatsDivider: '1px',
-      metricNumberSizes: [32, 16, 16, 16, 16],
+    const { metricNumberSizes, ...mobileLayout } = mobile;
+    assert.deepEqual({ ...mobileLayout, dividerTextGap: undefined }, { metricSizes: ['16px'], routeStatsDivider: '1px',
       primaryDivider: '1px', overflow: false, dividerTextGap: undefined });
+    assert.ok(Math.abs(metricNumberSizes[0] / metricNumberSizes[1] - 1.66) < 0.01);
+    assert.deepEqual(metricNumberSizes.slice(1), [16, 16, 16, 16]);
     assert.ok(mobile.dividerTextGap <= 4);
     await page.screenshot({ path: path.join(output, 'results-mobile.png'), fullPage: true });
     await page.locator('#toggleSidebar').click();

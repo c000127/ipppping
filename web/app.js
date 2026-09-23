@@ -962,8 +962,54 @@ function renderMain(options = {}) {
 // CSS wraps long routes instead of measuring and shrinking each label.
 let layoutColumns = 0;
 let layoutFrame = 0;
+let currentMetricFitFrame = 0;
+let fitAllCurrentMetrics = false;
+const currentMetricFitItems = new Set();
+
+function fitCurrentMetric(metric) {
+  const number = metric.querySelector('.stat-number');
+  const value = number?.closest('.stat-value');
+  const unit = value?.querySelector('.stat-unit');
+  if (!number || !value || !unit) return;
+
+  // Re-measure from the CSS emphasis size on every layout/data change so a
+  // number reduced at a narrow width grows back when space becomes available.
+  number.style.fontSize = '';
+  if (getComputedStyle(metric).getPropertyValue('--fit-current-value').trim() !== '1' || !unit.textContent)
+    return;
+
+  const available = value.clientWidth;
+  const numberWidth = number.getBoundingClientRect().width;
+  const unitWidth = unit.getBoundingClientRect().width;
+  const gap = parseFloat(getComputedStyle(value).columnGap) || 0;
+  const roomForNumber = available - unitWidth - gap - 1;
+  if (available <= 0 || numberWidth <= roomForNumber || numberWidth <= 0) return;
+
+  const baseSize = parseFloat(getComputedStyle(number).fontSize);
+  const fittedSize = Math.max(8, Math.floor(baseSize * roomForNumber / numberWidth * 100) / 100);
+  number.style.fontSize = `${fittedSize}px`;
+}
+
+function scheduleCurrentMetricFit(statsElement = null) {
+  if (statsElement) {
+    const metric = statsElement.querySelector('.stat-primary');
+    if (metric) currentMetricFitItems.add(metric);
+  } else fitAllCurrentMetrics = true;
+  if (currentMetricFitFrame) return;
+  currentMetricFitFrame = requestAnimationFrame(() => {
+    currentMetricFitFrame = 0;
+    const items = fitAllCurrentMetrics
+      ? [...(document.getElementById('graphGrid')?.querySelectorAll('.stat-primary') || [])]
+      : [...currentMetricFitItems];
+    fitAllCurrentMetrics = false;
+    currentMetricFitItems.clear();
+    items.forEach(metric => { if (metric.isConnected) fitCurrentMetric(metric); });
+  });
+}
+
 if ('ResizeObserver' in window) {
   new ResizeObserver(() => {
+    scheduleCurrentMetricFit();
     cancelAnimationFrame(layoutFrame);
     layoutFrame = requestAnimationFrame(() => {
       const grid = document.getElementById('graphGrid');
@@ -1265,6 +1311,7 @@ function renderGrid({ animate = true, animateLayout = animate, preserveRequest =
       if (chartsEnabled()) observeImages();
     });
   }
+  scheduleCurrentMetricFit();
 }
 
 function fetchStat(pair, id, dur, generation, signal) {
@@ -1300,6 +1347,7 @@ function showStatError(id) {
   if (!el) return;
   UIComponents.updateStats(el, null);
   releaseCardFrame(el.closest('.card'));
+  scheduleCurrentMetricFit(el);
 }
 
 function showStat(id, data, animate = true) {
@@ -1307,6 +1355,7 @@ function showStat(id, data, animate = true) {
   if (!el) return;
   UIComponents.updateStats(el, data, animate);
   releaseCardFrame(el.closest('.card'));
+  scheduleCurrentMetricFit(el);
 }
 
 function changeDuration(value) {

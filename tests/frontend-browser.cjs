@@ -199,6 +199,49 @@ async function main() {
           });
           assert.ok(divider.top <= 4 && divider.bottom <= 4, `two-by-two divider misses text edges at ${width}px: ${JSON.stringify(divider)}`);
         }
+        if (visual.mainWidth <= 460 && width === 320) {
+          const original = await page.evaluate(() => {
+            const stats = document.querySelector('.card .stats');
+            const number = stats.querySelector('.stat-primary .stat-number');
+            const unit = stats.querySelector('.stat-primary .stat-unit');
+            return { number: number.textContent, unit: unit.textContent,
+              baseSize: parseFloat(getComputedStyle(number).fontSize) };
+          });
+          await page.evaluate(() => {
+            const stats = document.querySelector('.card .stats');
+            stats.querySelector('.stat-primary .stat-number').textContent = '99999.9';
+            stats.querySelector('.stat-primary .stat-unit').textContent = 'ms';
+            scheduleCurrentMetricFit(stats);
+          });
+          await waitFor(page, () => {
+            const number = document.querySelector('.card .stat-primary .stat-number');
+            return number?.style.fontSize && parseFloat(getComputedStyle(number).fontSize) < 26;
+          });
+          const fitted = await page.evaluate(() => {
+            const item = document.querySelector('.card .stat-primary');
+            const value = item.querySelector('.stat-value');
+            const number = value.querySelector('.stat-number').getBoundingClientRect();
+            const unit = value.querySelector('.stat-unit').getBoundingClientRect();
+            const primary = item.getBoundingClientRect();
+            return { size: parseFloat(getComputedStyle(value.querySelector('.stat-number')).fontSize),
+              gap: unit.left - number.right,
+              sameLine: number.bottom > unit.top && unit.bottom > number.top,
+              noOverflow: value.scrollWidth <= value.clientWidth + 1,
+              dividerClearance: primary.right - 1 - unit.right };
+          });
+          assert.ok(fitted.size < original.baseSize, 'long CURRENT must shrink dynamically');
+          assert.ok(Math.abs(fitted.gap - 2) < 1, `CURRENT unit gap changed: ${fitted.gap}px`);
+          assert.equal(fitted.sameLine, true, 'CURRENT value and ms must remain on one line');
+          assert.equal(fitted.noOverflow, true, 'CURRENT value group must fit its column');
+          assert.ok(fitted.dividerClearance >= 7, `ms is too close to the divider: ${fitted.dividerClearance}px`);
+          await page.evaluate(original => {
+            const stats = document.querySelector('.card .stats');
+            stats.querySelector('.stat-primary .stat-number').textContent = original.number;
+            stats.querySelector('.stat-primary .stat-unit').textContent = original.unit;
+            scheduleCurrentMetricFit(stats);
+          }, original);
+          await waitFor(page, () => !document.querySelector('.card .stat-primary .stat-number').style.fontSize);
+        }
       }
       await page.screenshot({ path: path.join(out, `results-${width}.png`), fullPage: true });
     }

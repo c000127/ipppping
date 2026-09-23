@@ -109,6 +109,18 @@ function verifyPublicHtml(body, pageName) {
         .map(el => getComputedStyle(el).fontSize))],
       metricNumberSizes: [...document.querySelector('.card').querySelectorAll('.stat-number')]
         .map(el => parseFloat(getComputedStyle(el).fontSize)),
+      currentLine: (() => {
+        const item = document.querySelector('.card .stat-primary');
+        const value = item.querySelector('.stat-value');
+        const number = value.querySelector('.stat-number').getBoundingClientRect();
+        const unit = value.querySelector('.stat-unit').getBoundingClientRect();
+        const primary = item.getBoundingClientRect();
+        return { unit: value.querySelector('.stat-unit').textContent,
+          gap: unit.left - number.right,
+          sameLine: number.bottom > unit.top && unit.bottom > number.top,
+          noOverflow: value.scrollWidth <= value.clientWidth + 1,
+          dividerClearance: primary.right - 1 - unit.right };
+      })(),
       routeStatsDivider: getComputedStyle(document.querySelector('.card-right')).borderTopWidth,
       primaryDivider: getComputedStyle(document.querySelector('.stat-primary')).borderRightWidth,
       overflow: document.documentElement.scrollWidth > innerWidth,
@@ -120,11 +132,16 @@ function verifyPublicHtml(body, pageName) {
         return Math.max(Math.abs(line.top - Math.min(...text.map(rect => rect.top))),
           Math.abs(line.bottom - Math.max(...text.map(rect => rect.bottom))));
       })() }));
-    const { metricNumberSizes, ...mobileLayout } = mobile;
+    const { metricNumberSizes, currentLine, ...mobileLayout } = mobile;
     assert.deepEqual({ ...mobileLayout, dividerTextGap: undefined }, { metricSizes: ['16px'], routeStatsDivider: '1px',
       primaryDivider: '1px', overflow: false, dividerTextGap: undefined });
     assert.ok(Math.abs(metricNumberSizes[0] / metricNumberSizes[1] - 1.66) < 0.01);
     assert.deepEqual(metricNumberSizes.slice(1), [16, 16, 16, 16]);
+    assert.ok(currentLine.unit === 'ms' || currentLine.unit === 'μs');
+    assert.ok(Math.abs(currentLine.gap - 2) < 1);
+    assert.equal(currentLine.sameLine, true);
+    assert.equal(currentLine.noOverflow, true);
+    assert.ok(currentLine.dividerClearance >= 7);
     assert.ok(mobile.dividerTextGap <= 4);
     await page.screenshot({ path: path.join(output, 'results-mobile.png'), fullPage: true });
     await page.locator('#toggleSidebar').click();

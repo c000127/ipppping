@@ -153,6 +153,24 @@ SHA-256 `409ed961c5f626b27716159414e40e14703f90a098eb5f6dde5fe5ff38bb4458`。
 截图位于 Git 忽略的 `test-results/production-p2p3/`；节点配置、采样、凭据及 RRD
 未改动。Cloudflare 注入的 inline/beacon CSP 事件仍被页面策略阻止，应用无页面错误。
 
+### 2026-09-23 CURRENT 数值与单位同行适配
+
+在左侧 CURRENT + 右侧 2×2 布局中，数值和 `ms`/`μs` 固定同行。宽度不足时，
+通过布局/数据更新后的测量按需缩小数值字号，单位保持 12px，并留出防止贴住
+右侧分隔线的空间；宽度恢复后数值回到 1.66 倍基准。五列模式不变。
+
+最终资源为 `styles.a83ed987ee4407d0.css`、`app.a24a3ce8cd38c69a.js`；主页面
+SHA-256 `f2b758d5d4d5966aad1e8dec3d5d53f75c0d9d0a9bd8c00c9ffafe42edb00a56`，
+试用页 SHA-256 `b428076f4368a620b2198e28d78863943f35e5ba489341aa1cc4c6c0c826bdf6`。
+传输包 SHA-256 `048124b88c9639fb836a2fbf334ba077a7de0543421b4b113374582388d9ac72`，
+开发机与主控机一致；staging `/root/ipppping-stage-gZ6Yoa`，自动备份
+`/root/ipppping-backup-20260923T122138457978Z`。
+
+Chrome 153 与 WebKit 26.5 多断点回归通过，Chrome axe 无违规；本地长数值场景
+验证了字号收缩、同行和分隔线间距。公网 Chrome 153 于 12:22 UTC 核对两个 HTML
+及八个指纹资源；移动实测数值/单位间隔 2px、无换行/溢出，单位距分隔线 46.1px。
+结果卡状态提示仍为 0，应用无页面错误，生产服务 active 且 NRestarts 为 0。
+
 ## 验证证据
 
 - 本地 Python 68 项、Node 请求状态 4 项、Chrome 构建产物主页面回归、

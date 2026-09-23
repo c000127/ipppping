@@ -1,0 +1,22 @@
+.chart-trial { height: auto; overflow: auto; }
+.chart-trial main { max-width: 1320px; padding: 20px; margin: auto; }
+.chart-trial h1 { font-size: 22px; }
+.chart-trial p, .chart-trial h1, .chart-trial form, .chart-trial dl, .chart-trial details { margin-block: 16px; }
+.chart-trial a { color: var(--accent2); }
+.chart-trial form { display: flex; flex-wrap: wrap; gap: 12px; }
+.chart-trial label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.chart-trial select { max-width: 100%; background: var(--bg-hover); color: var(--text); border: 0; border-radius: var(--control-radius); }
+.chart-trial button, .chart-trial select { min-height: 40px; padding-inline: 8px; }
+.chart-trial button[aria-pressed=true] { background: var(--text); color: var(--bg); }
+.chart-trial dl { display: flex; flex-wrap: wrap; gap: 16px; }
+.chart-trial dt { color: var(--text-sec); }
+.chart-trial dd { color: var(--text); font-size: 18px; }
+#plot { min-height: 280px; max-width: 1280px; width: 100%; overflow: hidden; }
+#plot img { max-width: 100%; display: block; }
+#cursor { min-height: 40px; width: 100%; }
+.chart-trial .table-scroll { overflow: auto; }
+.chart-trial th, .chart-trial td { padding: 8px; text-align: left; }
+.chart-trial tbody tr:nth-child(even) { background: var(--bg-panel); }
+.chart-trial summary { cursor: pointer; min-height: 40px; }
+.chart-trial #page-label { padding-inline: 10px; }
+.chart-trial #status, .chart-trial #point-readout { overflow-wrap: anywhere; }

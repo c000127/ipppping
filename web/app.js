@@ -14,13 +14,12 @@ let appliedSelection = [];
 let statsCache = {};
 let statsCacheTimes = {};
 let activeFilter = 'all';
-let sidebarOpen = true;
 let selectedDuration = '10800';
 let draftDuration = '10800';
 let draftPairMode = 'all';
 let appliedPairMode = 'all';
-let draftAnchor = null;
-let appliedAnchor = null;
+const draftAnchors = new Set();
+let appliedAnchors = [];
 let appliedViewMode = 'stats';
 let draftViewMode = 'stats';
 let pairGroupRanges = {}; // groupKey -> {ymin, ymax} per node-pair+type
@@ -29,8 +28,6 @@ let unifiedChartRange = null;
 let renderGeneration = 0;
 let activeController = null;
 let batchLoadingGeneration = -1;
-let routeFitFrame = 0;
-let routeFitObservedWidth = 0;
 let suppressStatsAnimationGeneration = -1;
 let chartRefreshToken = 'initial';
 const isMobile = () => window.innerWidth <= 768;
@@ -102,22 +99,7 @@ async function fetchJsonAttempt(url, signal, timeoutMs) {
   }
 }
 
-// Sidebar toggle
-function toggleSidebar() {
-  const sb = document.getElementById('sidebar');
-  const ov = document.getElementById('overlay');
-  if (isMobile()) {
-    const open = sb.classList.toggle('mobile-open');
-    sb.classList.remove('collapsed');
-    ov.classList.toggle('show', open);
-  } else {
-    sidebarOpen = !sidebarOpen;
-    sb.classList.toggle('collapsed', !sidebarOpen);
-  }
-}
-if (isMobile()) {
-  document.getElementById('sidebar').classList.remove('mobile-open');
-}
+const sidebarUI = UIComponents.sidebarController();
 
 // Clock
 function tick() {
@@ -139,8 +121,6 @@ function toast(msg, err) {
 }
 
 // Load nodes
-document.getElementById('toggleSidebar').addEventListener('click', toggleSidebar);
-document.getElementById('overlay').addEventListener('click', toggleSidebar);
 document.getElementById('goBtn').addEventListener('click', showGraphs);
 document.getElementById('viewMode').addEventListener('click', event => {
   const button = event.target.closest('[data-mode]');
@@ -180,6 +160,7 @@ function durationOptionsMarkup() {
 }
 
 document.addEventListener('change', event => {
+  if (event.target.matches('.node-cb')) syncNodeSelection(event.target.dataset.id);
   if (event.target.id === 'durSelect') changeDuration(event.target.value);
   if (event.target.id === 'unifiedAxisToggle') setUnifiedYAxis(event.target.checked);
 });
@@ -194,8 +175,6 @@ document.addEventListener('click', event => {
     setAnchor(anchor.dataset.anchorNode);
     return;
   }
-  const node = event.target.closest('.node[data-node-id]');
-  if (node) return tog(node.dataset.nodeId);
   if (event.target.closest('[data-retry-nodes]')) return loadNodes();
   const group = event.target.closest('[data-select-group]');
   if (group) return selGrp(group.dataset.selectGroup, Number(group.dataset.selectValue));
@@ -205,13 +184,7 @@ document.addEventListener('click', event => {
   if (retry) return retryImage(retry.dataset.retryId);
 });
 
-document.addEventListener('keydown', event => {
-  const node = event.target.closest('.node[data-node-id]');
-  if (node && (event.key === 'Enter' || event.key === ' ')) {
-    event.preventDefault();
-    tog(node.dataset.nodeId);
-  }
-});
+// Native checkboxes/buttons own their keyboard behavior; no delegated toggle.
 
 function renderNodesLoading() {
   document.getElementById('sidebarInner').innerHTML = `
@@ -276,11 +249,13 @@ function nodeRow(n) {
   if (protocols.length) meta = `<span class="node-protocols">${protocols.join('')}</span>`;
   const id = escapeHtml(n.id);
   const label = escapeHtml(n.label);
-  return `<div class="node" id="n_${id}" data-node-id="${id}" tabindex="0" role="checkbox" aria-checked="false">
-    <input type="checkbox" class="node-cb" id="c_${id}" data-id="${id}">
-    <span class="node-label">${label}</span>
-    ${meta}
-    <button class="node-anchor" type="button" data-anchor-node="${id}" aria-label="Use ${label} as fixed node" title="Use this node as the fixed node">Fix</button>
+  return `<div class="node" id="n_${id}" data-node-id="${id}">
+    <label class="node-select" for="c_${id}">
+      <input type="checkbox" class="node-cb" id="c_${id}" data-id="${id}">
+      <span class="node-label">${label}</span>
+      ${meta}
+    </label>
+    <button class="node-anchor" type="button" data-anchor-node="${id}" aria-label="Use ${label} as fixed node" title="Use this node as a fixed node">Fix</button>
   </div>`;
 }
 
@@ -295,7 +270,7 @@ function updatePairingControls() {
   document.querySelectorAll('.node[data-node-id]').forEach(row => {
     const id = row.dataset.nodeId;
     const selected = document.getElementById('c_' + id)?.checked === true;
-    const anchor = draftPairMode === 'fixed' && draftAnchor === id && selected;
+    const anchor = draftPairMode === 'fixed' && draftAnchors.has(id) && selected;
     const button = row.querySelector('.node-anchor');
     row.classList.toggle('selection-anchorable', selected);
     row.classList.toggle('anchor-on', anchor);
@@ -304,13 +279,15 @@ function updatePairingControls() {
       button.disabled = !selected;
       button.textContent = anchor ? 'Fixed' : 'Fix';
       button.setAttribute('aria-pressed', String(anchor));
+      button.setAttribute('aria-label', `${anchor ? 'Remove' : 'Use'} ${row.querySelector('.node-label').textContent} ${anchor ? 'from' : 'as'} fixed nodes`);
+      button.title = anchor ? 'Remove from fixed nodes' : 'Use as a fixed node';
     }
   });
 }
 
 function setPairMode(mode) {
   draftPairMode = mode === 'fixed' ? 'fixed' : 'all';
-  if (draftPairMode === 'all') draftAnchor = null;
+  if (draftPairMode === 'all') draftAnchors.clear();
   updatePairingControls();
   updSel();
 }
@@ -319,7 +296,8 @@ function setAnchor(id) {
   if (draftPairMode !== 'fixed') return;
   const selected = document.getElementById('c_' + id)?.checked === true;
   if (!selected) return;
-  draftAnchor = id;
+  if (draftAnchors.has(id)) draftAnchors.delete(id);
+  else draftAnchors.add(id);
   updatePairingControls();
   updSel();
 }
@@ -327,10 +305,14 @@ function setAnchor(id) {
 function tog(id) {
   const c = document.getElementById('c_' + id);
   c.checked = !c.checked;
+  syncNodeSelection(id);
+}
+
+function syncNodeSelection(id) {
+  const c = document.getElementById('c_' + id);
   const row = document.getElementById('n_' + id);
   row.classList.toggle('on', c.checked);
-  row.setAttribute('aria-checked', String(c.checked));
-  if (!c.checked && draftAnchor === id) draftAnchor = null;
+  if (!c.checked) draftAnchors.delete(id);
   updatePairingControls();
   draftSelection = readSidebarSelection();
   updSel();
@@ -343,10 +325,10 @@ function selGrp(g, v) {
       c.checked = !!v;
       const row = document.getElementById('n_' + n.id);
       row.classList.toggle('on', !!v);
-      row.setAttribute('aria-checked', String(!!v));
     }
   });
-  if (draftAnchor && !readSidebarSelection().includes(draftAnchor)) draftAnchor = null;
+  const selected = new Set(readSidebarSelection());
+  for (const id of draftAnchors) if (!selected.has(id)) draftAnchors.delete(id);
   updatePairingControls();
   draftSelection = readSidebarSelection();
   updSel();
@@ -364,15 +346,22 @@ function selectionEquals(left, right) {
   return left.length === right.length && left.every((id, index) => id === right[index]);
 }
 
+function selectedFixedIds(selection) {
+  return selection.filter(id => draftAnchors.has(id));
+}
+
 function updSel() {
   const s = getSel();
+  const anchors = draftPairMode === 'fixed' ? selectedFixedIds(s) : [];
   let pairs = 0;
   let message = '';
-  if (draftPairMode === 'fixed' && !draftAnchor) {
+  if (draftPairMode === 'fixed' && anchors.length === 0) {
     message = 'Choose a fixed node';
+  } else if (draftPairMode === 'fixed' && anchors.length === s.length) {
+    message = 'Select a non-fixed node';
   } else {
     try {
-      pairs = makePairs(s, draftPairMode === 'fixed' ? draftAnchor : null).length;
+      pairs = makePairs(s, anchors).length;
     } catch (error) {
       message = error.message;
     }
@@ -382,23 +371,37 @@ function updSel() {
     || draftDuration !== selectedDuration
     || draftViewMode !== appliedViewMode
     || draftPairMode !== appliedPairMode
-    || (draftPairMode === 'fixed' ? draftAnchor : null) !== appliedAnchor;
+    || !selectionEquals(anchors, appliedAnchors);
   const submit = document.getElementById('goBtn');
   submit.classList.toggle('pending', pending);
   submit.setAttribute('data-pending', String(pending));
-  document.getElementById('selInfo').innerHTML = message
+  submit.textContent = `Show ${draftViewMode === 'charts' ? 'Charts' : 'Results'}`;
+  const axisOption = document.querySelector('.axis-option');
+  const axisHidden = draftViewMode !== 'charts';
+  axisOption.classList.toggle('is-hidden', axisHidden);
+  axisOption.inert = axisHidden;
+  axisOption.setAttribute('aria-hidden', String(axisHidden));
+  const info = document.getElementById('selInfo');
+  const nextInfo = message
     ? `<span class="selection-error">${message}</span>`
     : s.length < 2
       ? 'Select at least 2 nodes'
-      : `<b>${s.length}</b> nodes \u00b7 <b>${pairs}</b> results`;
+      : `<b>${s.length}</b> nodes${anchors.length ? ` · <b>${anchors.length}</b> fixed` : ''} \u00b7 <b>${pairs}</b> results${pending ? ' · Unapplied changes' : ''}`;
+  if (info.innerHTML !== nextInfo) {
+    info.innerHTML = nextInfo;
+    UIComponents.flash(info);
+  }
 }
 
-function makePairs(sel, anchor = null) {
+function makePairs(sel, anchors = []) {
   if (sel.length > 20) throw new Error('Select no more than 20 nodes');
-  if (anchor && !sel.includes(anchor)) throw new Error('Fixed node must be part of the selection');
+  const fixedIds = !anchors ? [] : typeof anchors === 'string' ? anchors.split(',') : [...anchors];
+  if (fixedIds.some(id => !id || !sel.includes(id)) || new Set(fixedIds).size !== fixedIds.length)
+    throw new Error('Fixed nodes must be unique and part of the selection');
+  const fixed = new Set(fixedIds);
   const p = [];
-  const combinations = anchor
-    ? sel.filter(id => id !== anchor).map(id => [anchor, id])
+  const combinations = fixed.size
+    ? sel.filter(id => fixed.has(id)).flatMap(anchor => sel.filter(id => !fixed.has(id)).map(id => [anchor, id]))
     : sel.flatMap((a, i) => sel.slice(i + 1).map(b => [a, b]));
   for (const [a, b] of combinations) {
     const na = nodes.find(n => n.id === a), nb = nodes.find(n => n.id === b);
@@ -803,7 +806,7 @@ function paintStatsCards(pairs, dur, generation, outcomes = new Map(), animate =
   requestAnimationFrame(paint);
 }
 
-async function refreshStatsBatch(nodeIds, pairs, dur, generation, signal, anchor = null) {
+async function refreshStatsBatch(nodeIds, pairs, dur, generation, signal, anchors = []) {
   const animateStats = generation !== suppressStatsAnimationGeneration;
   // An explicit Show Results is a refresh even when cached values are young.
   primeCardsFromCache(pairs, dur, animateStats);
@@ -813,7 +816,7 @@ async function refreshStatsBatch(nodeIds, pairs, dur, generation, signal, anchor
   try {
     data = await fetchJson(requestUrl('/api/stats-batch.json', {
       nodes: nodeIds.join(','), dur, w: graphSize.w, h: graphSize.h, state: 'p1',
-      ...(anchor ? { anchor } : {})
+      ...(anchors.length ? { anchor: anchors.join(',') } : {})
     }), signal, 30000);
     if (!data || !Array.isArray(data.items)) throw new Error('invalid batch response');
   } catch (error) {
@@ -864,8 +867,8 @@ async function showGraphs() {
   const firstResults = currentPairs.length === 0;
   const selectionChanged = !selectionEquals(sel, appliedSelection);
   const modeChanged = draftViewMode !== appliedViewMode;
-  const nextAnchor = draftPairMode === 'fixed' ? draftAnchor : null;
-  const pairingChanged = draftPairMode !== appliedPairMode || nextAnchor !== appliedAnchor;
+  const nextAnchors = draftPairMode === 'fixed' ? selectedFixedIds(sel) : [];
+  const pairingChanged = draftPairMode !== appliedPairMode || !selectionEquals(nextAnchors, appliedAnchors);
   const generation = ++renderGeneration;
   if (activeController) activeController.abort();
   imageObserver?.disconnect();
@@ -877,15 +880,12 @@ async function showGraphs() {
   blockedChartsGeneration = -1;
   activeController = new AbortController();
   const signal = activeController.signal;
-  if (isMobile()) {
-    document.getElementById('sidebar').classList.remove('mobile-open');
-    document.getElementById('overlay').classList.remove('show');
-  }
+  sidebarUI.closeMobile();
   let nextPairs;
   try {
     // The node list already contains every field needed to derive routes.
     // Avoid a redundant network round-trip before the first card can render.
-    nextPairs = makePairs(sel, nextAnchor);
+    nextPairs = makePairs(sel, nextAnchors);
   } catch (error) {
     toast('Invalid node selection', true);
     return;
@@ -894,7 +894,7 @@ async function showGraphs() {
   selectedDuration = draftDuration;
   appliedViewMode = draftViewMode;
   appliedPairMode = draftPairMode;
-  appliedAnchor = nextAnchor;
+  appliedAnchors = nextAnchors.slice();
   if (appliedViewMode === 'charts') {
     chartRefreshToken = `${Date.now()}-${generation}`;
   }
@@ -912,7 +912,7 @@ async function showGraphs() {
     hydrate: false,
     selectionChange: (selectionChanged || pairingChanged) && !modeChanged
   });
-  await refreshStatsBatch(appliedSelection, currentPairs, selectedDuration, generation, signal, appliedAnchor);
+  await refreshStatsBatch(appliedSelection, currentPairs, selectedDuration, generation, signal, appliedAnchors);
 }
 
 function setFilter(f) {
@@ -937,7 +937,11 @@ function setUnifiedYAxis(enabled) {
 }
 
 function updateFilterButtons() {
-  document.querySelectorAll('.pill[data-filter]').forEach(p => p.classList.toggle('on', p.dataset.filter === activeFilter));
+  document.querySelectorAll('.pill[data-filter]').forEach(p => {
+    const selected = p.dataset.filter === activeFilter;
+    p.classList.toggle('on', selected);
+    p.setAttribute('aria-pressed', String(selected));
+  });
 }
 
 function ensureMainShell() {
@@ -953,59 +957,24 @@ function renderMain(options = {}) {
   renderGrid(options);
 }
 
-function fitNarrowRouteLabels() {
-  routeFitFrame = 0;
-  const main = document.getElementById('mainArea');
-  const routes = Array.from(document.querySelectorAll('#graphGrid .route'));
-  routes.forEach(route => route.style.removeProperty('--route-fit-size'));
-  if (!main) return;
-
-  const measurements = routes.map(route => {
-    const resultsMode = route.closest('.grid')?.classList.contains('stats-only');
-    if (!resultsMode && main.clientWidth > 768) return null;
-
-    const labels = Array.from(route.querySelectorAll('.route-node'));
-    if (labels.length !== 2) return null;
-    const style = getComputedStyle(route);
-    const baseSize = parseFloat(style.fontSize) || 16;
-    const overflowRatio = labels.reduce((ratio, label) => {
-      if (!label.clientWidth || !label.scrollWidth) return ratio;
-      return Math.max(ratio, label.scrollWidth / label.clientWidth);
-    }, 1);
-    if (overflowRatio <= 1.005) return null;
-
-    const minSize = resultsMode && main.clientWidth > 768 ? 14 : 10.5;
-    const fittedSize = Math.max(
-      minSize,
-      Math.floor((baseSize / overflowRatio - 0.15) * 10) / 10
-    );
-    return { route, fittedSize };
-  }).filter(Boolean);
-
-  measurements.forEach(({ route, fittedSize }) => {
-    route.style.setProperty('--route-fit-size', `${fittedSize}px`);
-  });
-}
-
-function scheduleRouteFit() {
-  if (routeFitFrame) cancelAnimationFrame(routeFitFrame);
-  routeFitFrame = requestAnimationFrame(fitNarrowRouteLabels);
-}
-
-window.addEventListener('resize', scheduleRouteFit, { passive: true });
+// CSS wraps long routes instead of measuring and shrinking each label.
+let layoutColumns = 0;
+let layoutFrame = 0;
 if ('ResizeObserver' in window) {
-  const main = document.getElementById('mainArea');
-  if (main) {
-    routeFitObservedWidth = main.clientWidth;
-    new ResizeObserver(entries => {
-      const width = entries[0]?.contentRect.width || 0;
-      if (Math.abs(width - routeFitObservedWidth) < 0.5) return;
-      routeFitObservedWidth = width;
-      scheduleRouteFit();
-    }).observe(main);
-  }
+  new ResizeObserver(() => {
+    cancelAnimationFrame(layoutFrame);
+    layoutFrame = requestAnimationFrame(() => {
+      const grid = document.getElementById('graphGrid');
+      if (!grid) return;
+      const columns = getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length;
+      if (columns !== layoutColumns) {
+        layoutColumns = columns;
+        renderGrid({ animate: false, preserveRequest: true, hydrate: false });
+      }
+    });
+  }).observe(document.getElementById('mainArea'));
 }
-if (document.fonts?.ready) document.fonts.ready.then(scheduleRouteFit);
+updateFilterButtons();
 
 function pairIdentity(pair) {
   return `${pair.source}|${pair.target}|${pair.type}|${pair.ext ? 'ext' : 'net'}`;
@@ -1058,47 +1027,25 @@ function releaseCardFrame(card) {
 }
 
 function animateGridLayout(grid, before) {
+  if (UIComponents.reducedMotion()) return;
   requestAnimationFrame(() => {
     const cards = [...grid.querySelectorAll('.card[data-card-key]:not(.card-removing)')];
-    const finalRects = new Map(cards.map(card => [card.dataset.cardKey, card.getBoundingClientRect()]));
-    cards.forEach(card => {
-      const oldRect = before.get(card.dataset.cardKey);
-      const finalRect = finalRects.get(card.dataset.cardKey);
-      if (oldRect && finalRect && Math.abs(oldRect.height - finalRect.height) > 1) {
-        clearTimeout(card._layoutTimer);
-        card.style.height = `${oldRect.height}px`;
-      }
-    });
-    void grid.offsetHeight;
-    const startRects = new Map(cards.map(card => [card.dataset.cardKey, card.getBoundingClientRect()]));
-    requestAnimationFrame(() => {
-      cards.forEach(card => {
-        const oldRect = before.get(card.dataset.cardKey);
-        const startRect = startRects.get(card.dataset.cardKey);
-        const finalRect = finalRects.get(card.dataset.cardKey);
-        if (!oldRect || !startRect || !finalRect) return;
-        const sizeChanged = Math.abs(oldRect.height - finalRect.height) > 1;
-        const dx = startRect.left - finalRect.left;
-        const dy = sizeChanged ? 0 : startRect.top - finalRect.top;
-        if (Math.abs(dx) >= 1 || Math.abs(dy) >= 1) {
-          const animation = card.animate([
-            { transform: `translate(${dx}px, ${dy}px)` },
-            { transform: 'translate(0, 0)' }
-          ], { duration: 240, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
-          animation.finished.then(() => { card.style.transform = ''; }, () => {});
-        }
-        if (sizeChanged) {
-          card.style.height = `${finalRect.height}px`;
-          card._layoutTimer = setTimeout(() => {
-            card.style.height = '';
-          }, 260);
-        }
-      });
+    const rects = cards.map(card => card.getBoundingClientRect());
+    cards.forEach((card, i) => {
+      const old = before.get(card.dataset.cardKey);
+      if (!old) return;
+      const dx = old.left - rects[i].left, dy = old.top - rects[i].top;
+      if (Math.abs(dx) + Math.abs(dy) < 1) return;
+      card._layoutAnimation?.cancel();
+      card._layoutAnimation = card.animate([
+        { transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }
+      ], { duration: 180, easing: 'ease-out' });
     });
   });
 }
 
 function animateNewCard(card) {
+  if (UIComponents.reducedMotion()) { card.classList.remove('card-enter'); return; }
   requestAnimationFrame(() => {
     if (!card.isConnected) return;
     card.classList.add('card-enter-active');
@@ -1106,42 +1053,26 @@ function animateNewCard(card) {
   });
 }
 
-function findCard(grid, key) {
-  return Array.from(grid.querySelectorAll('.card[data-card-key]'))
-    .find(card => card.dataset.cardKey === key) || null;
-}
 
-function findSlotCard(grid, slotKey, retained) {
-  return Array.from(grid.querySelectorAll('.card[data-card-key]'))
-    .find(card => !retained.has(card) && !card.classList.contains('card-removing') && card.dataset.slotKey === slotKey) || null;
-}
-
-function findPositionalCard(grid, retained) {
-  return Array.from(grid.querySelectorAll('.card[data-card-key]'))
-    .find(card => !retained.has(card)) || null;
-}
 
 function removeCardAfterFade(card, grid, animate) {
   if (card._removeAnimation) return;
-  if (!animate) {
+  if (!animate || UIComponents.reducedMotion()) {
     card.querySelectorAll('img[data-skel]').forEach(cancelImageLoad);
     card.remove();
     return;
   }
   card.classList.add('card-removing');
-  const height = Math.max(1, card.getBoundingClientRect().height);
   const animation = card.animate([
-    { opacity: 1, transform: 'translateY(0)', maxHeight: `${height}px` },
-    { opacity: 0, transform: 'translateY(-6px)', maxHeight: '0px' }
+    { opacity: 1 },
+    { opacity: 0 }
   ], { duration: 220, easing: 'ease-in' });
   card._removeAnimation = animation;
   animation.finished.then(() => {
     if (card._removeAnimation !== animation) return;
-    const before = captureCardRects(grid);
     card.querySelectorAll('img[data-skel]').forEach(cancelImageLoad);
     card.remove();
     card._removeAnimation = null;
-    animateGridLayout(grid, before);
   }, () => {});
 }
 
@@ -1214,20 +1145,12 @@ function updateCardContent(card, pair, charts, animate) {
   // the chart region changes, so a mode switch never flashes an empty header.
   const preserveStats = previousKey === contentKey && previousMode !== mode;
   const previousStats = preserveStats ? content.querySelector('.stats') : null;
-  const previousStatsMarkup = previousStats?.innerHTML || '';
-  const previousStatsClass = previousStats?.className || '';
   content.querySelectorAll('img[data-skel]').forEach(cancelImageLoad);
   content.innerHTML = cardContentMarkup(pair, charts);
   const nextStats = content.querySelector('.stats');
-  if (preserveStats && nextStats && previousStatsMarkup) {
-    nextStats.innerHTML = previousStatsMarkup;
-    nextStats.className = previousStatsClass;
-  }
+  if (previousStats && nextStats) nextStats.replaceWith(previousStats);
   if (animate && changed) {
-    content.classList.remove('content-switching');
-    void content.offsetWidth;
-    content.classList.add('content-switching');
-    setTimeout(() => content.classList.remove('content-switching'), 260);
+    UIComponents.flash(content);
   }
 }
 
@@ -1278,6 +1201,8 @@ function renderGrid({ animate = true, animateLayout = animate, preserveRequest =
   }
   const charts = chartsEnabled();
   const dur = selectedDuration;
+  animate = animate && !UIComponents.reducedMotion();
+  animateLayout = animateLayout && !UIComponents.reducedMotion();
   const before = animateLayout ? captureCardRects(grid) : new Map();
   grid.classList.toggle('stats-only', !charts);
   let list = currentPairs;
@@ -1286,19 +1211,19 @@ function renderGrid({ animate = true, animateLayout = animate, preserveRequest =
   if (activeFilter === 'ext') list = currentPairs.filter(p => p.ext);
 
   const columns = getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).filter(Boolean);
+  layoutColumns = columns.length;
   list = orderPairsForLayout(list, columns.length < 2);
   // This is intentionally the final axis calculation: it runs only after the
   // current view's filter and layout ordering have produced the visible list.
   unifiedChartRange = charts && unifiedYAxisEnabled ? computeUnifiedRange(list, dur) : null;
   const desired = new Set(list.map(pairIdentity));
   const retained = new Set();
+  const index = UIComponents.cardIndex(grid, desired);
 
-  list.forEach(pair => {
+  list.forEach((pair, position) => {
     const key = pairIdentity(pair);
     const slotKey = pairSlotIdentity(pair);
-    let card = findCard(grid, key);
-    if (!card) card = findSlotCard(grid, slotKey, retained);
-    if (!card && selectionChange) card = findPositionalCard(grid, retained);
+    let card = index.take(key, slotKey, selectionChange);
     const previousKey = card?.dataset.cardKey;
     if (!card) {
       card = createCard(pair, charts);
@@ -1315,6 +1240,7 @@ function renderGrid({ animate = true, animateLayout = animate, preserveRequest =
     card.dataset.cardKey = key;
     card.dataset.slotKey = slotKey;
     retained.add(card);
+    if (grid.children[position] !== card) grid.insertBefore(card, grid.children[position] || null);
     if (hydrate) hydrateCard(card, pair, charts, generation, signal);
     else if (charts && loadCharts) syncChartSource(card, pair);
   });
@@ -1331,7 +1257,6 @@ function renderGrid({ animate = true, animateLayout = animate, preserveRequest =
   } else if (list.length && noMatches) {
     noMatches.remove();
   }
-  fitNarrowRouteLabels();
   if (animateLayout) animateGridLayout(grid, before);
   if (charts && (hydrate || loadCharts) && batchLoadingGeneration !== generation) {
     observeImages();
@@ -1370,53 +1295,16 @@ function fetchStat(pair, id, dur, generation, signal) {
 
 function showStatError(id, error = 'refresh_failed') {
   const el = document.getElementById(id);
-  if (el) {
-    const items = ['current', 'avg', 'min', 'max', 'loss'].map((label, i) =>
-      `<span class="stat-item ${i === 0 ? 'stat-primary' : 'stat-secondary'}">` +
-      `<span class="stat-label">${label}</span>` +
-      `<span class="stat-value">—</span></span>`
-    );
-    el.innerHTML = items[0] + `<div class="stat-support">${items.slice(1).join('')}</div>`;
-    el.classList.remove('stats-pending');
-    releaseCardFrame(el.closest('.card'));
-    paintDataState(id, null, null, error);
-  }
+  if (!el) return;
+  UIComponents.updateStats(el, null);
+  releaseCardFrame(el.closest('.card'));
+  paintDataState(id, null, null, error);
 }
 
-function showStat(id, d, animate = true) {
+function showStat(id, data, animate = true) {
   const el = document.getElementById(id);
   if (!el) return;
-  const lc = !Number.isFinite(d.loss_pct) ? '' : d.loss_pct > 5 ? 'loss-bad' : d.loss_pct > 0 ? 'loss-warn' : 'loss-ok';
-  const latencyValues = [d.current_ms, d.avg_ms, d.min_ms, d.max_ms].filter(Number.isFinite);
-  const currentMs = Number.isFinite(d.current_ms)
-    ? d.current_ms
-    : null;
-  const useUs = latencyValues.length > 0 && Math.max(...latencyValues) < 1;
-  const fmt = v => {
-    if (!Number.isFinite(v)) return '<span class="stat-number">—</span>';
-    return useUs
-      ? `<span class="stat-number">${(v * 1000).toFixed(0)}</span><span class="stat-unit">\u03bcs</span>`
-      : `<span class="stat-number">${v.toFixed(1)}</span><span class="stat-unit">ms</span>`;
-  };
-  const item = (label, value, className = '') =>
-    `<span class="stat-item ${className}">` +
-    `<span class="stat-label">${label}</span>` +
-    `<span class="stat-value">${value}</span></span>`;
-  el.innerHTML = item('current', fmt(currentMs), 'stat-primary')
-    + `<div class="stat-support">`
-    + item('avg', fmt(d.avg_ms), 'stat-secondary')
-    + item('min', fmt(d.min_ms), 'stat-secondary')
-    + item('max', fmt(d.max_ms), 'stat-secondary')
-    + item('loss', Number.isFinite(d.loss_pct)
-      ? `<span class="stat-number">${d.loss_pct.toFixed(1)}</span><span class="stat-unit">%</span>`
-      : '<span class="stat-number">—</span>', `stat-secondary ${lc}`)
-    + `</div>`;
-  el.classList.remove('stat-updated', 'stats-pending');
-  if (animate) {
-    void el.offsetWidth;
-    el.classList.add('stat-updated');
-    setTimeout(() => el.classList.remove('stat-updated'), 260);
-  }
+  UIComponents.updateStats(el, data, animate);
   releaseCardFrame(el.closest('.card'));
 }
 

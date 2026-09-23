@@ -29,6 +29,7 @@ SmokePing master/slaves -> RRD files -> ipPping API -> Caddy/TLS -> browser
                                       +-- /api/pairs
                                       +-- /api/stats[-batch]
                                       +-- /api/series
+                                      +-- /api/v2/series (opt-in chart trial)
                                       +-- /api/graph.png
 ```
 
@@ -37,24 +38,32 @@ presentation API: it validates node pairs, invokes `rrdtool`, caches short-lived
 results, and serves the files in `web/`. The API listens on loopback by default;
 put a TLS reverse proxy in front of it.
 
+The deployed main page still uses PNG charts. An independent, opt-in
+`/chart-trial` page uses a bounded Canvas renderer and the v2 series API;
+it does not load on the main page. See the
+[2026-09-23 frontend release record](docs/FRONTEND_PUBLIC_RELEASE.md) for
+deployed artifacts, verification and remaining rollout gates.
+
 ## Pairing modes
 
 The sidebar defaults to `All pairs`, which keeps the original many-to-many
-selection behavior. `Fixed node` changes only the pair derivation: choose one
-selected node as the fixed node and the application creates links between it
-and every other selected node. Selecting exactly one other node therefore
-produces a one-to-one view. Existing IPv4/IPv6, external-target, statistics,
-chart, and layout rules are unchanged.
+selection behavior. `Fixed nodes` lets you mark one or more selected nodes as
+fixed. Each fixed node is paired with each selected non-fixed node; fixed nodes
+do not pair with one another, and non-fixed nodes do not pair with one another.
+At least one node of each kind is required. With one of each, this is a
+one-to-one view. Existing IPv4/IPv6, external-target, statistics, chart, and
+layout rules are unchanged. The sidebar control area keeps a stable height as
+the selection or view changes.
 
 The same rule is available to API consumers with an optional `anchor` query
 parameter on `/api/pairs` and `/api/stats-batch.json`:
 
 ```text
-/api/pairs?nodes=probe_sg,probe_jp&anchor=probe_sg
+/api/pairs?nodes=probe_sg,probe_jp,probe_de&anchor=probe_sg,probe_jp
 ```
 
-The anchor must be one of the selected node IDs. Omitting it preserves the
-default many-to-many behavior.
+Each comma-separated anchor must be a unique selected node ID. The earlier
+single-ID form remains valid; omitting `anchor` preserves many-to-many pairing.
 
 ## Local development
 

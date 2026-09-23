@@ -1,5 +1,51 @@
 # Changelog
 
+## 2026-09-23 — P2 main page and isolated P3 trial deployed
+
+- Published the P2 main page and the separate opt-in `/chart-trial` with v2
+  APIs; the main Charts view continues to use PNG. See the
+  [public release record](FRONTEND_PUBLIC_RELEASE.md) for artifact checks and
+  production tests. No node, probe, key or RRD data was changed.
+- Removed persistent white borders from UI surfaces and hid native node
+  checkboxes visually while retaining keyboard/accessible selection. All five
+  metric values now use the same font size at each breakpoint.
+- Restored the subtle internal metric, route/stat and stat/chart dividers after
+  feedback, while keeping outer card/control borders removed.
+- Anchored visually hidden node checkboxes within their rows so focusing a
+  lower node no longer scrolls the page or sidebar shell.
+- Allowed multiple Fixed nodes with only fixed-to-non-fixed results, preserving
+  single-anchor API compatibility. Stabilized sidebar footer height and added
+  reduced-motion-aware drawer/control transitions.
+- The low-end-device test requirement was explicitly waived by the user.
+  Cross-browser/manual accessibility checks, full end-to-end cost comparison,
+  24–48h observation and default Canvas migration remain open.
+
+## P3 — isolated trial implementation
+
+- Explicit v2 bucket contract, consistent RRD snapshot reader and bounded
+  interval envelopes preserving median extrema/loss counts/missing intervals.
+- Self-hosted uPlot 1.6.32 on a separate opt-in chart trial page, with accessible
+  interval inspection, single-instance cleanup and explicit PNG comparison.
+- Added lossless columnar series encoding and negotiated gzip with bounded
+  serialized-response caching; fractional-DPR canvas width obeys a fixed pixel budget.
+- Real synthetic-RRD comparison and browser regressions recorded in
+  [P3 report](FRONTEND_P3_REPORT.md). G3 is not yet passed; matrix migration and
+  default Canvas rollout remain gated on end-to-end cost and stability evidence.
+
+## P2 — implementation and local validation
+
+- Consolidated CSS tokens/components and extracted DOM helpers; keyed card
+  reconciliation and in-place metric updates replace repeated scans/rebuilds.
+- Native keyboard selection, independent Fix buttons, inert/focus-managed mobile
+  drawer, responsive text reflow and reduced-motion support.
+- Deterministic content-fingerprinted build and staged installer preserving old
+  client assets, with activation rollback tests. No production Node dependency.
+- Increased RRDtool PNG Y-axis label allowance and matched axis-probe/output
+  widths after synthetic and public-site read-only visual checks found clipped
+  numeric labels or spikes; this change is included in the 2026-09-23 release.
+- See [P2 report](FRONTEND_P2_REPORT.md) for measurements, release procedure and
+  outstanding real-device/production validation.
+
 ## 2026-09-22 — P1 correctness and request governance
 
 - Shared four-slot browser request pool for JSON and PNG; overload no longer

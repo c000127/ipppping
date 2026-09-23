@@ -36,11 +36,13 @@ where needed, a private deployment inventory.
 ## Fixed-node selection
 
 The web sidebar supports two pairing modes. `All pairs` is the normal
-many-to-many behavior. In `Fixed node` mode, first select the nodes, mark one
-of the selected rows as fixed, and then click `Show Results`; only that node
-and each other selected node are matched. With one other selected node this is
-a one-to-one check. Removing the fixed node clears the fixed state. The API
-equivalent is `anchor=<node-id>` on `/api/pairs` or `/api/stats-batch.json`.
+many-to-many behavior. In `Fixed nodes` mode, first select the nodes, mark one
+or more rows as fixed, and then click `Show Results`. Only fixed-to-non-fixed
+pairs are generated: fixed nodes do not produce results with each other, nor
+do non-fixed nodes. At least one selected node must remain non-fixed. Unselecting
+a fixed node also clears its fixed state. The API equivalent is
+`anchor=<node-id>[,<node-id>...]` on `/api/pairs` or `/api/stats-batch.json`;
+the original single-ID form remains supported.
 
 ## Stable naming
 

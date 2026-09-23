@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FILES = ["server.py", "config.py", "runtime.py", "nodes.py", "rrd.py"]
 payload = {
     "baseline": {name: subprocess.check_output(["git", "show", f"0b33aa6:{name}"], cwd=ROOT).decode() for name in FILES},
-    "p1": {name: (ROOT / name).read_text(encoding="utf-8") for name in FILES},
+    "p1": {name: (ROOT / name).read_text(encoding="utf-8") for name in FILES + ["series_v2.py", "series_contract.py"]},
 }
 REMOTE = r'''
 import importlib, json, pathlib, subprocess, sys, tempfile, time, platform

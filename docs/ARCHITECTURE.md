@@ -23,8 +23,8 @@ browser
   GET /
   GET /static/index assets and fonts
   GET /api/nodes
-  GET /api/pairs?nodes=...&anchor=...
-  GET /api/stats-batch.json?nodes=...&dur=...&anchor=...
+  GET /api/pairs?nodes=...&anchor=id1[,id2...]
+  GET /api/stats-batch.json?nodes=...&dur=...&anchor=id1[,id2...]
   GET /api/graph.png?source=...&target=...&type=...&dur=...
        |
        v
@@ -53,10 +53,10 @@ nodes are dual stack, both directions for IPv6. For a VPS and an external node,
 it creates the supported external direction. DNS-to-DNS pairs are rejected.
 The frontend may reorder dual-stack cards for a narrow one-column display, but
 the API remains the authority for which pairs are valid. The default selection
-mode is many-to-many. In fixed-node mode, an `anchor` node is paired only with
-each other selected node; an anchor plus one other node is the one-to-one case.
-The anchor must be part of the selection, and omitting it preserves the default
-pair set.
+mode is many-to-many. In fixed-node mode, each `anchor` ID is paired with each
+selected non-fixed ID; fixed-to-fixed and non-fixed-to-non-fixed routes are
+omitted. One fixed node plus one non-fixed node is the one-to-one case. Anchors
+must be unique selected IDs, and omitting them preserves the default pair set.
 
 ## RRD lookup
 
@@ -77,10 +77,20 @@ contract or updating the adapter deliberately.
 ## Frontend structure
 
 The shipped frontend is intentionally framework-free. `web/app.js` owns
-selection state, request cancellation, stable card identities, Results/Charts
-rendering, unified-axis calculation, and image retry behavior. `web/styles.css`
-contains the responsive layout and the animation rules. `web/index.html` is the
-small shell served by the Python process.
+selection state, request cancellation, Results/Charts rendering, unified-axis
+calculation, and image retry behavior. `web/ui-components.js` owns DOM helpers,
+stable card reconciliation and focus-managed mobile navigation. `web/styles.css`
+contains the responsive layout and animation rules. `web/index.html` is the
+small shell served by the Python process. Production HTML references
+content-fingerprinted assets; old non-fingerprinted assets remain available for
+already-open clients.
+
+In Fixed nodes mode, both the local pair preview and the API use the same
+fixed-to-non-fixed cross-product. Multiple comma-separated fixed IDs are
+accepted; fixed-to-fixed and non-fixed-to-non-fixed routes are omitted. The
+sidebar footer reserves stable control rows so selection status and Charts
+options do not resize the node list. Drawer and control transitions honor
+`prefers-reduced-motion`.
 
 The current visual contract is a dark, dense monitoring console:
 
@@ -95,6 +105,17 @@ The current visual contract is a dark, dense monitoring console:
   cause a collapse/re-grow cycle.
 
 ## Service boundaries
+
+### P2 and isolated P3 trial (deployed 2026-09-23)
+
+P2 extracts DOM helpers and uses fingerprinted assets. P3 adds `series_contract.py`
+and `series_v2.py`, plus `/api/v2/series`, `/api/v2/summary` and a separate
+`/chart-trial` page. This does not replace the deployed matrix/PNG path.
+See [v2 contract](SERIES_V2.md) and [P3 gate report](FRONTEND_P3_REPORT.md).
+The trial uses the same total stats cache and RRDtool semaphore. Its uPlot assets
+load only on the trial page; no framework or Node service runs in production.
+See the [public release record](FRONTEND_PUBLIC_RELEASE.md) for deployed hashes,
+validation and remaining gates.
 
 ### P1 (deployed 2026-09-22)
 

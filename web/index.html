@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,viewport-fit=cover">
 <meta name="description" content="ipPping — Real-time network latency matrix between VPS nodes.">
 <title>ipPping — Latency Matrix</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260922-p1">
+  <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
 <div id="app">
 
   <header class="topbar">
     <div class="topbar-left">
-      <button class="toggle-btn" id="toggleSidebar" title="Toggle sidebar" aria-label="Toggle sidebar">
+      <button class="toggle-btn" id="toggleSidebar" title="Toggle sidebar" aria-label="Open node controls" aria-controls="sidebar" aria-expanded="true">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
           <line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/>
         </svg>
@@ -27,7 +27,7 @@
 
   <div class="content">
     <div class="sidebar-overlay" id="overlay"></div>
-    <aside class="sidebar" id="sidebar">
+    <aside class="sidebar" id="sidebar" aria-label="Node selection and result controls">
       <div class="sidebar-inner" id="sidebarInner">
         <div class="empty nodes-loading" role="status" aria-label="Loading nodes">
           <div class="spinner"></div>
@@ -50,13 +50,13 @@
         </div>
         <div class="pairing-mode" id="pairMode" role="group" aria-label="Pairing mode" title="Choose how selected nodes are matched">
           <button class="pairing-mode-btn on" type="button" data-pair-mode="all" aria-pressed="true">Pairing</button>
-          <button class="pairing-mode-btn" type="button" data-pair-mode="fixed" aria-pressed="false">Fixed node</button>
+          <button class="pairing-mode-btn" type="button" data-pair-mode="fixed" aria-pressed="false">Fixed nodes</button>
         </div>
         <div class="view-mode" id="viewMode" role="group" aria-label="Display mode">
           <button class="view-mode-btn on" type="button" data-mode="stats" aria-pressed="true">Results</button>
           <button class="view-mode-btn" type="button" data-mode="charts" aria-pressed="false">Charts</button>
         </div>
-        <label class="axis-option" for="unifiedAxisToggle" title="Use one Y-axis range for all visible charts">
+        <label class="axis-option is-hidden" for="unifiedAxisToggle" title="Use one Y-axis range for all filtered charts" aria-hidden="true" inert>
           <span class="axis-option-label">Unified Y-axis</span>
           <span class="axis-toggle">
             <input id="unifiedAxisToggle" type="checkbox" aria-label="Unified Y-axis">
@@ -68,7 +68,7 @@
       </div>
     </aside>
 
-    <main class="main" id="mainArea">
+    <main class="main" id="mainArea" tabindex="0" aria-label="Latency results">
       <div class="empty" id="emptyState">
         <div class="empty-title">Latency Matrix</div>
         <div class="empty-sub">Select nodes and click "Show Results" to view measurements. Refresh manually to retrieve new data.</div>
@@ -79,7 +79,8 @@
 </div>
 <div class="toast-box" id="toastBox"></div>
 
-<script src="/static/request-state.js?v=20260922-p1" defer></script>
-<script src="/static/app.js?v=20260922-p1" defer></script>
+<script src="/static/request-state.js" defer></script>
+<script src="/static/ui-components.js" defer></script>
+<script src="/static/app.js" defer></script>
 </body>
 </html>

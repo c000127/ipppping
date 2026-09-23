@@ -168,6 +168,34 @@ class RequestValidationTests(unittest.TestCase):
             for pair in pairs
         ))
 
+    def test_multiple_fixed_nodes_only_pair_with_non_fixed_nodes(self):
+        body, status = server.handle_pairs(parse_qs(
+            "nodes=vps_town_a1,legendsg,akari_jp,dmit_jp&anchor=vps_town_a1,legendsg"
+        ))
+        pairs = json.loads(body)
+        fixed = {"vps_town_a1", "legendsg"}
+        self.assertEqual(status, 200)
+        self.assertEqual(len(pairs), 16)
+        self.assertTrue(all(
+            len(fixed.intersection((pair["source"], pair["target"]))) == 1
+            for pair in pairs
+        ))
+        self.assertEqual({pair["type"] for pair in pairs}, {"v4", "v6"})
+
+    def test_multiple_fixed_nodes_keep_external_direction(self):
+        body, status = server.handle_pairs(parse_qs(
+            "nodes=google_dns,legendsg,akari_jp&anchor=google_dns,legendsg"
+        ))
+        pairs = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(pairs), 6)
+        self.assertEqual(len([pair for pair in pairs if pair["ext"]]), 2)
+        self.assertTrue(all(pair["target"] == "google_dns" for pair in pairs if pair["ext"]))
+        self.assertNotIn(
+            frozenset(("google_dns", "legendsg")),
+            {frozenset((pair["source"], pair["target"])) for pair in pairs},
+        )
+
     def test_fixed_node_keeps_external_target_rule(self):
         body, status = server.handle_pairs(parse_qs(
             "nodes=vps_town_a1,legendsg,google_dns&anchor=google_dns"
@@ -185,6 +213,15 @@ class RequestValidationTests(unittest.TestCase):
         ))
         self.assertEqual(status, 400)
         self.assertEqual(json.loads(body)["error"]["code"], "invalid_selection")
+
+    def test_pair_endpoint_rejects_duplicate_or_empty_fixed_nodes(self):
+        for anchors in ("legendsg,legendsg", "legendsg,"):
+            with self.subTest(anchors=anchors):
+                body, status = server.handle_pairs(parse_qs(
+                    f"nodes=legendsg,akari_jp&anchor={anchors}"
+                ))
+                self.assertEqual(status, 400)
+                self.assertEqual(json.loads(body)["error"]["code"], "invalid_selection")
 
     def test_pair_endpoint_rejects_too_many_nodes(self):
         nodes = "vps_town_a1,legendsg,akari_jp"
@@ -254,6 +291,19 @@ class RequestValidationTests(unittest.TestCase):
         self.assertTrue(all(item.get("stats") == expected for item in data["items"]))
         self.assertEqual(fetch.call_count, 8)
 
+    def test_stats_batch_uses_multiple_fixed_nodes(self):
+        fake_rrd = Path(server.__file__)
+        expected = {"current_ms": 1.1, "avg_ms": 1, "max_ms": 2, "min_ms": 1, "loss_pct": 0}
+        with patch.object(server, "resolve_rrd", return_value=(fake_rrd, server.NODES[0], server.NODES[1])):
+            with patch.object(server, "rrd_fetch_stats", return_value=expected) as fetch:
+                body, status = server.handle_stats_batch(parse_qs(
+                    "nodes=vps_town_a1,legendsg,akari_jp,dmit_jp&anchor=vps_town_a1,legendsg&dur=10800&w=900&h=320"
+                ))
+        data = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(data["items"]), 16)
+        self.assertEqual(fetch.call_count, 16)
+
     def test_stats_current_comes_from_raw_measurement_not_graph_last(self):
         fake_rrd = Path(server.__file__)
         server.STATS_CACHE.clear()
@@ -301,6 +351,9 @@ class RequestValidationTests(unittest.TestCase):
                 ))
         self.assertEqual(status, 200)
         self.assertEqual(mime, "image/png")
+        probe = run.call_args_list[0].args[0]
+        self.assertEqual(probe[probe.index("-w") + 1], "346")
+        self.assertEqual(probe[probe.index("-h") + 1], "230")
 
     def test_mobile_24h_graph_uses_compact_time_labels(self):
         fake_rrd = Path(server.__file__)
@@ -317,6 +370,7 @@ class RequestValidationTests(unittest.TestCase):
         command = run.call_args_list[-1].args[0]
         grid_index = command.index("--x-grid")
         self.assertEqual(command[grid_index + 1], "HOUR:1:HOUR:6:HOUR:6:0:%H:%M")
+        self.assertEqual(command[command.index("--units-length") + 1], "6")
 
     def test_desktop_24h_graph_keeps_default_time_labels(self):
         fake_rrd = Path(server.__file__)
@@ -332,6 +386,7 @@ class RequestValidationTests(unittest.TestCase):
         self.assertEqual(mime, "image/png")
         command = run.call_args_list[-1].args[0]
         self.assertNotIn("--x-grid", command)
+        self.assertEqual(command[command.index("--units-length") + 1], "5")
 
     def test_unsupported_protocol_is_a_client_error(self):
         body, status = server.handle_stats(parse_qs(

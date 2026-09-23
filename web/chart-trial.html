@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ipPping · Single-route chart trial</title>
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/static/vendor/uplot.css">
+<link rel="stylesheet" href="/static/chart-trial.css">
+<body class="chart-trial">
+<main>
+  <a href="/">Back to latency matrix (PNG default)</a>
+  <h1>Single-route chart trial</h1>
+  <p>Experimental v2 statistics. No automatic refresh. UTC+08:00. The production matrix is unchanged.</p>
+  <form id="query">
+    <label>Source <select id="source" required></select></label>
+    <label>Target <select id="target" required></select></label>
+    <label>Protocol <select id="protocol"><option>v4</option><option>v6</option></select></label>
+    <label>Window <select id="duration"><option value="3600">1h</option><option value="10800" selected>3h</option><option value="21600">6h</option><option value="86400">24h</option></select></label>
+    <label>Point budget <select id="points"><option>120</option><option>360</option><option selected>720</option><option>1440</option></select></label>
+    <button type="submit" id="load" disabled>Load snapshot</button>
+  </form>
+  <p id="status" role="status">Loading node list…</p>
+  <p id="route"></p>
+  <dl id="summary"></dl>
+  <div role="group" aria-label="Experimental renderer">
+    <button id="canvas-mode" aria-pressed="true">Canvas trial</button>
+    <button id="png-mode" aria-pressed="false">PNG comparison</button>
+  </div>
+  <p>RTT line: mean of consolidated medians in each displayed interval. Vertical marks: its min/max medians; red dots: maximum loss %. Any missing RTT breaks the line. These are not individual ping samples.</p>
+  <div id="plot" role="group" aria-label="Latency chart with equivalent statistics and interval table below"></div>
+  <label id="inspector">Inspect interval <input id="cursor" type="range" min="0" max="0" value="0" disabled></label>
+  <p id="point-readout" aria-live="polite">Load a snapshot to inspect values.</p>
+  <details id="details"><summary>Accessible interval data (50 rows per page)</summary>
+    <p>For finer detail choose 1440 points and submit again. This still contains consolidated RRD buckets, not original ping timings.</p>
+    <button id="prev" type="button">Previous</button><span id="page-label"></span><button id="next" type="button">Next</button>
+    <div class="table-scroll"><table><caption>Interval values; — means unknown</caption><thead><tr><th>Interval (UTC+08)</th><th>Mean RTT ms</th><th>Min–max median ms</th><th>Max loss %</th><th>Loss buckets</th><th>Missing RTT / total</th></tr></thead><tbody id="rows"></tbody></table></div>
+  </details>
+</main>
+<script src="/static/request-state.js" defer></script>
+<script src="/static/vendor/uplot.js" defer></script>
+<script src="/static/chart-trial.js" defer></script>
+</body>
+</html>

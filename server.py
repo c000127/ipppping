@@ -20,6 +20,8 @@ from config import (
 from runtime import serialized_keys, windowed_map
 from nodes import load_nodes
 from rrd import find_rrd as find_rrd_file
+from series_contract import POINT_BUDGETS, response as series_response
+from series_v2 import read_snapshot, wire_response, accepts_gzip
 
 BATCH_EXECUTOR = ThreadPoolExecutor(max_workers=MAX_GRAPH_WORKERS, thread_name_prefix="stats")
 BATCH_SLOTS = threading.BoundedSemaphore(MAX_BATCH_REQUESTS)
@@ -392,6 +394,36 @@ def handle_series(params):
     return json.dumps(series).encode(), 200
 
 
+def handle_series_v2(params, summary_only=False, compressed=False):
+    try:
+        source, target, typ, dur, _, _, _ = parse_request(params)
+        # A destination-only external node must never become a collector.
+        node = next((n for n in NODES if n['id'] == source), None)
+        if node is not None and node['group'] != 'vps':
+            raise ValueError('external nodes cannot be probe sources')
+        now = int(time.time())
+        end = int(first_param(params, 'end', str(now // 60 * 60)))
+        budget = int(first_param(params, 'points', '720'))
+        encoding = first_param(params, 'encoding', 'objects')
+        if encoding not in ('objects', 'columns'):
+            raise ValueError('encoding must be objects or columns')
+        if end % 60 or not now - 172800 <= end <= now or budget not in POINT_BUDGETS:
+            raise ValueError('end must be minute-aligned within 48h; points must be 120,360,720,1440')
+        path, _, _ = resolve_rrd(source, target, typ)
+    except (TypeError, ValueError, LookupError) as exc:
+        return json_error('invalid_parameter', str(exc), HTTPStatus.BAD_REQUEST)
+    except FileNotFoundError:
+        return json_error('no_data', 'no RRD data is available', HTTPStatus.NOT_FOUND)
+    try:
+        value = read_snapshot(path, end - dur, end, parse_lastupdate)
+        return wire_response(value, budget, summary_only, (source, target, typ), encoding, compressed), 200
+    except RuntimeError:
+        return json_error('snapshot_changed', 'RRD changed during read; retry later', HTTPStatus.SERVICE_UNAVAILABLE)
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        LOG.warning('v2 series failed: %s', exc)
+        return json_error('rrd_error', 'could not read a consistent RRD snapshot', HTTPStatus.BAD_GATEWAY)
+
+
 def handle_nodes():
     data = json.dumps(NODES)
     return data.encode()
@@ -404,21 +436,31 @@ def make_pairs(node_ids, anchor_id=None):
     if len(selected) > MAX_SELECTED_NODES:
         raise ValueError(f"select no more than {MAX_SELECTED_NODES} nodes")
 
-    if anchor_id is not None and anchor_id not in node_ids:
+    if anchor_id is None:
+        anchor_ids = ()
+    elif isinstance(anchor_id, str):
+        anchor_ids = tuple(anchor_id.split(","))
+    else:
+        anchor_ids = tuple(anchor_id)
+    if any(not isinstance(node_id, str) or not node_id for node_id in anchor_ids):
+        raise ValueError("fixed nodes must be non-empty node IDs")
+    if len(anchor_ids) != len(set(anchor_ids)):
+        raise ValueError("fixed nodes must be unique")
+    if any(node_id not in node_ids for node_id in anchor_ids):
         raise ValueError("fixed node must be part of the selection")
 
-    if anchor_id is None:
+    if not anchor_ids:
         combinations = [
             (first, second)
             for index, first in enumerate(selected)
             for second in selected[index + 1:]
         ]
     else:
-        anchor = next(node for node in selected if node["id"] == anchor_id)
+        fixed = set(anchor_ids)
         combinations = [
             (anchor, node)
-            for node in selected
-            if node["id"] != anchor_id
+            for anchor in selected if anchor["id"] in fixed
+            for node in selected if node["id"] not in fixed
         ]
 
     pairs = []
@@ -590,6 +632,10 @@ def handle_graph(params):
         # Probe for data range
         probe_cmd = [
             "rrdtool", "graph", "/dev/null",
+            # VDEF/graph consolidation depends on pixel width. Probe at the
+            # same width as the final PNG so a narrow default-width probe
+            # cannot choose an axis that clips the rendered spike.
+            "-w", str(w), "-h", str(h),
             "-s", f"-{dur}",
             "DEF:median_r={}:median:AVERAGE".format(rrd_path),
             "CDEF:median_ms=median_r,1000,*",
@@ -674,8 +720,9 @@ def handle_graph(params):
         "--font", "WATERMARK:1:",
         "--border", "0",
         "--zoom", "2.0",
-        # Reserve only the space needed for the short numeric Y-axis labels.
-        "--units-length", "3",
+        # Include the SI suffix (e.g. "1.4 k") so high spikes do not clip
+        # Y-axis labels at the left edge of the generated PNG.
+        "--units-length", "6" if w <= 600 else "5",
     ]
 
     # RRDtool's default 24h labels include the weekday, which overlaps at the
@@ -875,13 +922,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
 
-        elif path == "/api/series":
-            data, status = handle_series(params)
+        elif path in ("/api/series", "/api/v2/series", "/api/v2/summary"):
+            compressed = path != '/api/series' and accepts_gzip(self.headers.get('Accept-Encoding'))
+            data, status = handle_series(params) if path == '/api/series' else handle_series_v2(params, path.endswith('/summary'), compressed)
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_security_headers()
             for k, v in cors_headers: self.send_header(k, v)
             self.send_header("Cache-Control", "no-cache")
+            if path != '/api/series':
+                self.send_header('Vary', 'Accept-Encoding')
+                if compressed and status == 200:
+                    self.send_header('Content-Encoding', 'gzip')
+            if status == HTTPStatus.SERVICE_UNAVAILABLE:
+                self.send_header('Retry-After', '2')
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -930,11 +984,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
 
-        elif path in {"/static/styles.css", "/static/app.js", "/static/request-state.js"}:
+        elif path in {"/static/styles.css", "/static/app.js", "/static/request-state.js", "/static/ui-components.js", "/static/chart-trial.js", "/static/chart-trial.css", "/static/vendor/uplot.js", "/static/vendor/uplot.css"} or re.fullmatch(r"/static/assets/[a-z-]+\.[0-9a-f]{16}\.(?:js|css)", path):
             filename = os.path.basename(path)
+            immutable = path.startswith('/static/assets/')
             content_type = "text/css; charset=utf-8" if filename.endswith(".css") else "text/javascript; charset=utf-8"
             try:
-                body = (WEB_DIR / filename).read_bytes()
+                body = (WEB_DIR / 'assets' / filename if immutable else WEB_DIR / path.removeprefix('/static/')).read_bytes()
             except OSError:
                 self.send_response(HTTPStatus.NOT_FOUND)
                 self.send_security_headers()
@@ -943,14 +998,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", content_type)
             self.send_security_headers()
-            self.send_header("Cache-Control", "no-cache, must-revalidate")
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable" if immutable else "no-cache, must-revalidate")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
 
-        elif path == "/" or path == "/index.html":
+        elif path in ("/", "/index.html", "/chart-trial"):
             try:
-                body = (WEB_DIR / "index.html").read_bytes()
+                body = (WEB_DIR / ('chart-trial.html' if path == '/chart-trial' else 'index.html')).read_bytes()
             except OSError:
                 data = json_error("frontend_unavailable", "frontend assets are not installed", HTTPStatus.SERVICE_UNAVAILABLE)[0]
                 self.send_response(HTTPStatus.SERVICE_UNAVAILABLE)
@@ -962,6 +1017,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, must-revalidate")
             self.send_security_headers()
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()

@@ -57,19 +57,26 @@ function verifyPublicHtml(body, pageName) {
     await page.locator('#n_akari_jp .node-label').click();
     await page.locator('#n_google_dns .node-label').click();
     await page.locator('#goBtn').click();
-    await page.waitForFunction(() => document.querySelectorAll('.data-state[data-state="measured"]').length === 2);
+    await page.waitForFunction(() => {
+      const values = [...document.querySelectorAll('.card .stat-primary .stat-number')];
+      return values.length === 2 && values.every(el => el.textContent.trim() && el.textContent.trim() !== '—');
+    });
     const results = await page.evaluate(() => ({ cards: document.querySelectorAll('.card').length,
       ext: document.querySelectorAll('.card .badge-ext').length,
       v6: document.querySelectorAll('.card .badge-v6').length,
       overflow: document.documentElement.scrollWidth > innerWidth,
       metricSizes: [...new Set([...document.querySelector('.card').querySelectorAll('.stat-value')]
         .map(el => getComputedStyle(el).fontSize))],
+      metricNumberSizes: [...document.querySelector('.card').querySelectorAll('.stat-number')]
+        .map(el => parseFloat(getComputedStyle(el).fontSize)),
       cardBorder: getComputedStyle(document.querySelector('.card')).borderTopWidth,
       controlsBorder: getComputedStyle(document.querySelector('.pills')).borderTopWidth,
       routeStatsDivider: getComputedStyle(document.querySelector('.card-right')).borderTopWidth,
       statItemDivider: getComputedStyle(document.querySelector('.stat-support .stat-item')).borderLeftWidth,
       checkboxClip: getComputedStyle(document.querySelector('.node-cb')).clipPath,
-      normalStatusHidden: [...document.querySelectorAll('.data-state')].every(el => el.hidden),
+      resultStatusElements: document.querySelectorAll('.card .data-state').length,
+      resultStatusText: [...document.querySelectorAll('.card')].some(card =>
+        /cached result|refresh needed|latest probe|last measurement|no measurement|stale measurement|refresh failed|no RRD data/i.test(card.innerText)),
       footerHeight: document.querySelector('.sidebar-foot').getBoundingClientRect().height,
       statusRows: [...document.querySelector('#selInfo').children].map(el => el.getBoundingClientRect().height),
       freshness: document.querySelector('#selFreshness').textContent,
@@ -83,12 +90,15 @@ function verifyPublicHtml(body, pageName) {
     assert.equal(results.v6, 1);
     assert.equal(results.overflow, false);
     assert.equal(results.metricSizes.length, 1);
+    assert.equal(results.metricNumberSizes[0], results.metricNumberSizes[1],
+      'five-column desktop results should keep numeric values at the same size');
     assert.equal(results.cardBorder, '0px');
     assert.equal(results.controlsBorder, '0px');
     assert.equal(results.routeStatsDivider, '1px');
     assert.equal(results.statItemDivider, '1px');
     assert.equal(results.checkboxClip, 'inset(50%)');
-    assert.equal(results.normalStatusHidden, true);
+    assert.equal(results.resultStatusElements, 0);
+    assert.equal(results.resultStatusText, false);
     assert.deepEqual(results.statusRows, [20, 20]);
     assert.match(results.freshness, /^Updated \d{2}:\d{2}$/);
     assert.equal(results.metricsCentered, true);
@@ -97,6 +107,8 @@ function verifyPublicHtml(body, pageName) {
     const mobile = await page.evaluate(() => ({
       metricSizes: [...new Set([...document.querySelector('.card').querySelectorAll('.stat-value')]
         .map(el => getComputedStyle(el).fontSize))],
+      metricNumberSizes: [...document.querySelector('.card').querySelectorAll('.stat-number')]
+        .map(el => parseFloat(getComputedStyle(el).fontSize)),
       routeStatsDivider: getComputedStyle(document.querySelector('.card-right')).borderTopWidth,
       primaryDivider: getComputedStyle(document.querySelector('.stat-primary')).borderRightWidth,
       overflow: document.documentElement.scrollWidth > innerWidth,
@@ -109,6 +121,7 @@ function verifyPublicHtml(body, pageName) {
           Math.abs(line.bottom - Math.max(...text.map(rect => rect.bottom))));
       })() }));
     assert.deepEqual({ ...mobile, dividerTextGap: undefined }, { metricSizes: ['16px'], routeStatsDivider: '1px',
+      metricNumberSizes: [32, 16, 16, 16, 16],
       primaryDivider: '1px', overflow: false, dividerTextGap: undefined });
     assert.ok(mobile.dividerTextGap <= 4);
     await page.screenshot({ path: path.join(output, 'results-mobile.png'), fullPage: true });
@@ -123,6 +136,9 @@ function verifyPublicHtml(body, pageName) {
     assert.ok(await page.locator('.sidebar-foot').evaluate(el => el.getBoundingClientRect().height) > results.footerHeight + 20);
     await page.locator('#goBtn').click();
     await page.waitForFunction(() => document.querySelectorAll('.card-img img.ok').length === 2);
+    const chartScale = await page.evaluate(() => [...document.querySelector('.card').querySelectorAll('.stat-number')]
+      .map(el => parseFloat(getComputedStyle(el).fontSize)));
+    assert.equal(chartScale[0], chartScale[1], 'five-column charts must keep numeric values at the same size');
     const chartDividers = await page.evaluate(() => ({
       routeStats: getComputedStyle(document.querySelector('.card-right')).borderTopWidth,
       statsGraph: getComputedStyle(document.querySelector('.card-img')).borderTopWidth }));
@@ -204,7 +220,7 @@ function verifyPublicHtml(body, pageName) {
     await multi.waitForFunction(expected => document.getElementById('selFreshness').textContent === expected, expectedFreshness);
     await multi.waitForFunction(() => document.querySelectorAll('.card').length === 4);
     assert.equal(await multi.locator('.card .badge-ext').count(), 4);
-    assert.equal(await multi.locator('.card .data-state:visible').count(), 0);
+    assert.equal(await multi.locator('.card .data-state').count(), 0);
     await multi.screenshot({ path: path.join(output, 'multi-fixed-desktop.png'), fullPage: true });
     const multiFixed = { cards: 4, fixed: 2, footerHeight: await footerHeight(), freshness: expectedFreshness };
 

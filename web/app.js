@@ -107,7 +107,6 @@ function tick() {
   const d = new Date();
   document.getElementById('clock').textContent =
     d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Shanghai', hour12: false }) + ' UTC+08:00';
-  if (d.getSeconds() % 15 === 0) refreshVisibleDataStates();
 }
 tick(); setInterval(tick, 1000);
 
@@ -747,28 +746,7 @@ function showCachedStat(pair, dur, animate = true) {
   if (!statsCache[key]) return false;
   if (statsLRU.has(key)) { const size = statsLRU.get(key); statsLRU.delete(key); statsLRU.set(key, size); }
   showStat(statsIdFor(pair), statsCache[key], animate);
-  paintDataState(statsIdFor(pair), statsCache[key], statsCacheTimes[key], statsFailures.get(key));
   return true;
-}
-
-function paintDataState(id, data, cachedAt, error) {
-  const card = document.getElementById(id)?.closest('.card');
-  const status = card?.querySelector('.data-state');
-  if (!status) return;
-  const state = RequestState.dataStatus(data, cachedAt, Date.now(), error);
-  status.dataset.state = state.state;
-  const ordinaryMeasurement = state.state === 'measured' && state.label === 'Last measurement';
-  status.hidden = ordinaryMeasurement;
-  const text = ordinaryMeasurement ? '' : state.label.replace(/^Last measurement · cached/, 'Cached result');
-  if (status.textContent !== text) status.textContent = text;
-}
-
-function refreshVisibleDataStates() {
-  currentPairs.forEach(pair => {
-    const key = statsCacheKey(pair);
-    if (statsCache[key]) paintDataState(statsIdFor(pair), statsCache[key], statsCacheTimes[key], statsFailures.get(key));
-  });
-  updateSelectionFreshness();
 }
 
 function cacheBatchItems(items, dur, cachedAt = Date.now()) {
@@ -821,7 +799,7 @@ function paintStatsCards(pairs, dur, generation, outcomes = new Map(), animate =
       const error = outcomes.get(statsItemKey(pair));
       if (error) statsFailures.set(key, error);
       else if (outcomes.has(statsItemKey(pair))) statsFailures.delete(key);
-      if (!showCachedStat(pair, dur, animate) && outcomes.has(statsItemKey(pair))) showStatError(statsIdFor(pair), error);
+      if (!showCachedStat(pair, dur, animate) && outcomes.has(statsItemKey(pair))) showStatError(statsIdFor(pair));
     }
     if (index < pairs.length) requestAnimationFrame(paint);
   };
@@ -1138,7 +1116,6 @@ function cardContentMarkup(pair, charts) {
           <div class="stats" id="${statsIdFor(pair)}"></div>
         </div>
        </div>
-       <div class="data-state" aria-label="Measurement status" hidden></div>
        ${chartMarkup}`;
 }
 
@@ -1208,7 +1185,7 @@ function hydrateCard(card, pair, charts, generation, signal) {
     card.dataset.fetchGeneration = String(generation);
     fetchStat(pair, statsId, selectedDuration, generation, signal);
   } else if (!cached && statsFailures.has(key)) {
-    showStatError(statsId, statsFailures.get(key));
+    showStatError(statsId);
   }
   if (charts && batchLoadingGeneration !== generation) syncChartSource(card, pair);
 }
@@ -1313,17 +1290,16 @@ function fetchStat(pair, id, dur, generation, signal) {
       if (error.name === 'AbortError') return;
       if (generation === renderGeneration) {
         statsFailures.set(key, error.status === 404 ? 'no_data' : 'refresh_failed');
-        if (!showCachedStat(pair, dur, false)) showStatError(id, statsFailures.get(key));
+        if (!showCachedStat(pair, dur, false)) showStatError(id);
       }
     });
 }
 
-function showStatError(id, error = 'refresh_failed') {
+function showStatError(id) {
   const el = document.getElementById(id);
   if (!el) return;
   UIComponents.updateStats(el, null);
   releaseCardFrame(el.closest('.card'));
-  paintDataState(id, null, null, error);
 }
 
 function showStat(id, data, animate = true) {

@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
 const origin = 'https://ipppping.hachimihaqile.top';
+const manifest = JSON.parse(fs.readFileSync(path.join(root, 'build/web-release/manifest.json'), 'utf8'));
 const output = path.join(root, 'test-results', 'production-p1');
 fs.mkdirSync(output, { recursive: true });
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -24,22 +25,32 @@ const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
     assert.deepEqual(requests, ['/api/nodes']);
     assert.equal(await page.locator('.refresh-mode').innerText(), 'Manual refresh');
     const assets = {};
-    for (const name of ['app.js', 'request-state.js', 'styles.css']) {
-      const response = await page.request.get(`${origin}/static/${name}?v=20260922-p1`);
-      assert.equal(response.status(), 200);
+    for (const [name, expected] of Object.entries(manifest.assets)) {
+      const response = await page.request.get(`${origin}/static/assets/${name}`);
+      assert.equal(response.status(), 200, name);
       assets[name] = hash(await response.body());
-      assert.equal(assets[name], hash(fs.readFileSync(path.join(root, 'web', name))), `public ${name} must match release bytes`);
+      assert.equal(assets[name], expected, `public ${name} must match the release manifest`);
     }
     await page.locator('#n_akari_jp .node-label').click();
     await page.locator('#n_google_dns .node-label').click();
     await page.locator('#goBtn').click();
-    await page.waitForFunction(() => document.querySelectorAll('.data-state[data-state="measured"]').length === 2, null, { timeout: 45000 });
+    await page.waitForFunction(() => {
+      const values = [...document.querySelectorAll('.card .stat-primary .stat-number')];
+      return values.length === 2 && values.every(el => el.textContent.trim() && el.textContent.trim() !== '—');
+    }, null, { timeout: 45000 });
+    assert.equal(await page.locator('.card .data-state').count(), 0);
+    const sizes = await page.locator('.card').first().locator('.stat-number').evaluateAll(items =>
+      items.map(el => parseFloat(getComputedStyle(el).fontSize)));
+    assert.equal(sizes[0], sizes[1], 'five-column results must keep numeric values at the same size');
     assert.equal(await page.locator('.card .badge-ext').count(), 2);
     assert.equal(await page.locator('.card .badge-v6').count(), 1);
     await page.screenshot({ path: path.join(output, 'results-desktop.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(350);
     await page.screenshot({ path: path.join(output, 'results-mobile.png'), fullPage: true });
+    const mobileSizes = await page.locator('.card').first().locator('.stat-number').evaluateAll(items =>
+      items.map(el => parseFloat(getComputedStyle(el).fontSize)));
+    assert.deepEqual(mobileSizes, [32, 16, 16, 16, 16], 'narrow left-plus-2x2 layout must emphasize CURRENT');
     await page.setViewportSize({ width: 1440, height: 900 });
     const query = '/api/stats?source=akari_jp&target=google_dns&type=v6&dur=10800';
     const old = await (await page.request.get(origin + query)).json();

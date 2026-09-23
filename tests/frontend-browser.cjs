@@ -17,6 +17,15 @@ async function waitFor(page, predicate) {
   const handle = await page.waitForFunction(predicate);
   await handle.dispose();
 }
+async function assertNoResultStatus(page, context) {
+  const result = await page.evaluate(() => ({
+    elements: document.querySelectorAll('.card .data-state').length,
+    forbidden: [...document.querySelectorAll('.card')]
+      .flatMap(card => card.innerText.match(/cached result|refresh needed|latest probe|last measurement|no measurement|stale measurement|refresh failed|no RRD data/gi) || [])
+  }));
+  assert.equal(result.elements, 0, `${context}: result cards must not render status elements`);
+  assert.deepEqual(result.forbidden, [], `${context}: result cards must not contain status text`);
+}
 const nodes = Array.from({ length: 16 }, (_, i) => ({ id: `test_${i}`, label: `Test ${i}`, v4: true, v6: true, group: 'vps', region: 'Test' }));
 nodes.push({ id: 'external', label: 'External DNS', v4: true, v6: true, group: 'dns', region: 'Test' });
 nodes.push({ id: 'tg5', label: 'Telegram DC5', v4: true, v6: false, group: 'dns', region: 'Test' });
@@ -131,6 +140,7 @@ async function main() {
           return {
             metricCount: values.length,
             metricSizes: [...new Set(values.map(el => getComputedStyle(el).fontSize))],
+            metricNumberSizes: [...card.querySelectorAll('.stat-number')].map(el => parseFloat(getComputedStyle(el).fontSize)),
             cardBorder: getComputedStyle(card).borderTopWidth,
             groupBorder: getComputedStyle(document.querySelector('.pills')).borderTopWidth,
             routeStatsTop: getComputedStyle(card.querySelector('.card-right')).borderTopWidth,
@@ -145,6 +155,10 @@ async function main() {
         });
         assert.equal(visual.metricCount, 5);
         assert.equal(visual.metricSizes.length, 1, `metric sizes differ at ${width}px`);
+        const primaryNumberSize = visual.metricNumberSizes[0];
+        const secondaryNumberSize = visual.metricNumberSizes[1];
+        assert.equal(primaryNumberSize, visual.mainWidth <= 460 || visual.mainWidth >= 1360
+          ? secondaryNumberSize * 2 : secondaryNumberSize, `CURRENT numeric size is incorrect at ${width}px`);
         assert.equal(visual.cardBorder, '0px');
         assert.equal(visual.groupBorder, '0px');
         assert.equal(visual.routeStatsTop, visual.mainWidth >= 1360 ? '0px' : '1px');
@@ -154,7 +168,7 @@ async function main() {
         assert.equal(visual.primaryDivider, visual.mainWidth <= 460 ? '1px' : '0px');
         assert.equal(visual.checkboxClip, 'inset(50%)');
         assert.equal(visual.horizontalOverflow, false);
-        assert.equal(await page.locator('.data-state').first().isVisible(), false, 'normal measurements should not repeat the timestamp in each card');
+        await assertNoResultStatus(page, `normal results at ${width}px`);
         if (visual.mainWidth > 460 && visual.mainWidth < 1360) {
           const centered = await page.evaluate(() => [...document.querySelector('.card .stats').querySelectorAll('.stat-item')].every(item => {
             const center = rect => (rect.left + rect.right) / 2;
@@ -415,32 +429,37 @@ async function main() {
       report.cases.push({ case: 'selection-boundaries-fixed-external-single-stack', ...boundaries });
       assert.equal(requests.filter(p => p === '/api/stats').length, 0);
       assert.equal(requests.filter(p => p.includes('batch')).length, 3);
-      assert.match(await page.locator('.data-state').first().innerText(), /refresh failed/);
+      await assertNoResultStatus(page, '503 failure');
       await page.evaluate(() => setFilter('v6'));
       await page.waitForTimeout(150);
       assert.equal(requests.length, 3, 'filter must not restart failed requests');
       for (const scenario of ['network','malformed','missing','loss','stale']) {
         await reset(scenario); await select(); await ready();
-        const text = await page.locator('.data-state').first().innerText();
+        await assertNoResultStatus(page, scenario);
         if (scenario === 'missing' || scenario === 'loss') {
           assert.doesNotMatch(await page.locator('.stat-primary').first().innerText(), /20/);
-          assert.match(text, scenario === 'missing' ? /No measurement/ : /100% loss/);
-        } else assert.match(text, scenario === 'stale' ? /Stale/ : /refresh failed/);
-        report.cases.push({ case: scenario, requests: requests.length, status: text });
+        }
+        report.cases.push({ case: scenario, requests: requests.length, resultStatusElements: 0 });
       }
       await reset(); await select(); await ready();
+      await waitFor(page, () => document.querySelectorAll('.card .stat-primary .stat-number').length === 8
+        && [...document.querySelectorAll('.card .stat-primary .stat-number')].every(el => el.textContent !== '—')
+        && batchLoadingGeneration === -1 && !document.querySelector('.stats-pending'));
+      const beforePartialValues = await page.locator('.card .stat-primary .stat-number').allTextContents();
       mode = 'partial';
       await page.evaluate(() => showGraphs());
-      await waitFor(page, () => document.querySelector('[data-state="error"]'));
-      assert.equal(await page.locator('[data-state="error"]').count(), 1);
-      report.cases.push({ case: 'partial-failure-preserves-old-data', errors: 1 });
+      await waitFor(page, () => statsFailures.size === 1 && batchLoadingGeneration === -1);
+      await assertNoResultStatus(page, 'partial failure');
+      assert.deepEqual(await page.locator('.card .stat-primary .stat-number').allTextContents(), beforePartialValues,
+        'partial refresh failure should preserve the previous measurements without showing a per-card status');
+      report.cases.push({ case: 'partial-failure-preserves-card-layout-without-status-copy', errors: 1 });
       mode = 'normal';
       const before = requests.length;
       await page.evaluate(() => showGraphs());
-      await waitFor(page, () => !document.querySelector('[data-state="error"]'));
+      await waitFor(page, () => statsFailures.size === 0 && batchLoadingGeneration === -1);
       assert.ok(requests.length > before, 'explicit submit must bypass fresh client cache');
-      await page.evaluate(() => { for (const key in statsCacheTimes) statsCacheTimes[key] -= 61000; refreshVisibleDataStates(); });
-      assert.match(await page.locator('.data-state').first().innerText(), /refresh needed/);
+      await page.evaluate(() => { for (const key in statsCacheTimes) statsCacheTimes[key] -= 61000; updateSelectionFreshness(); });
+      await assertNoResultStatus(page, 'expired client cache');
       await reset('slow'); await select();
       await page.evaluate(() => { changeDuration('86400'); showGraphs(); });
       await waitFor(page, () => document.querySelector('.stat-primary .stat-number')?.textContent === '24.0');
@@ -449,6 +468,28 @@ async function main() {
       report.cases.push({ case: 'generation-protection', current: '24.0' });
       await reset('unsupported'); await select(['test_0','test_1','test_2','external'], true); await ready();
       await waitFor(page, () => requestPool.active === 0 && requestPool.queue.length === 0 && activeLoads === 0);
+      await page.setViewportSize({ width: 390, height: 844 });
+      const narrowChartMetricScale = await page.evaluate(() => {
+        const sizes = [...document.querySelector('.card').querySelectorAll('.stat-number')].map(el => parseFloat(getComputedStyle(el).fontSize));
+        return { mainWidth: document.querySelector('#mainArea').getBoundingClientRect().width,
+          primary: sizes[0], secondary: sizes[1], statsOnly: document.querySelector('#graphGrid').classList.contains('stats-only') };
+      });
+      assert.equal(narrowChartMetricScale.statsOnly, false);
+      assert.ok(narrowChartMetricScale.mainWidth <= 460);
+      assert.equal(narrowChartMetricScale.primary, narrowChartMetricScale.secondary * 2,
+        'CURRENT must be double-sized in the left-plus-2x2 narrow layout');
+      await page.setViewportSize({ width: 1800, height: 900 });
+      const chartMetricScale = await page.evaluate(() => {
+        const card = document.querySelector('.card');
+        const sizes = [...card.querySelectorAll('.stat-number')].map(el => parseFloat(getComputedStyle(el).fontSize));
+        return { mainWidth: document.querySelector('#mainArea').getBoundingClientRect().width,
+          primary: sizes[0], secondary: sizes[1], statsOnly: document.querySelector('#graphGrid').classList.contains('stats-only') };
+      });
+      assert.equal(chartMetricScale.statsOnly, false);
+      assert.ok(chartMetricScale.mainWidth >= 1360);
+      assert.equal(chartMetricScale.primary, chartMetricScale.secondary,
+        'five-column charts must keep numeric values at the same size');
+      await assertNoResultStatus(page, 'charts results');
       assert.ok(peak <= 4, `mixed JSON/PNG peak ${peak}`);
       report.cases.push({ case: '404-compatibility-mixed-json-png', requests: requests.length, peak });
       // Timeout includes response-body parsing; a stalled body is cancelled.

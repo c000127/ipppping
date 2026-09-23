@@ -119,8 +119,6 @@ button:disabled { cursor: default; color: var(--text-dim); background: transpare
 .loss-warn .stat-value { color: var(--warning); }
 .loss-bad .stat-value { color: var(--danger); }
 .stats-pending { opacity: .8; }
-.data-state { color: var(--text-sec); font-size: 12px; padding: 0 18px 10px; overflow-wrap: anywhere; }
-.data-state[data-state="stale"], .data-state[data-state="error"] { color: var(--warning); }
 
 /* PNG frames keep space reserved while loading or retrying. */
 .card-img { position: relative; border-top: 1px solid var(--border); padding: 4px 6px 6px; aspect-ratio: 900 / 320; min-height: 220px; }
@@ -161,6 +159,7 @@ button:disabled { cursor: default; color: var(--text-dim); background: transpare
   .stats-only .stat-support { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .stats-only .stat-support .stat-item { border: 0; padding: 0; align-items: flex-end; text-align: right; }
   .stats-only .stat-support .stat-value { justify-content: flex-end; }
+  .stats-only .stat-primary .stat-number { font-size: 2em; }
 }
 @container main (max-width: 768px) {
   .card-head { padding: 12px; gap: 8px; }
@@ -176,6 +175,7 @@ button:disabled { cursor: default; color: var(--text-dim); background: transpare
   .stat-support .stat-value { justify-content: flex-end; }
   .stat-primary { align-self: stretch; align-items: flex-start; border-right: 1px solid var(--border); padding-block: 0; padding-right: 8px; text-align: left; }
   .stat-primary .stat-value { justify-content: flex-start; }
+  .stat-primary .stat-number { font-size: 2em; }
 }
 @media (max-width: 768px) {
   :root { --control-height: 40px; --sidebar-w: 100vw; }

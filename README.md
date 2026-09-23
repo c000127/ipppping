@@ -52,8 +52,8 @@ fixed. Each fixed node is paired with each selected non-fixed node; fixed nodes
 do not pair with one another, and non-fixed nodes do not pair with one another.
 At least one node of each kind is required. With one of each, this is a
 one-to-one view. Existing IPv4/IPv6, external-target, statistics, chart, and
-layout rules are unchanged. The sidebar control area keeps a stable height as
-the selection or view changes.
+layout rules are unchanged. The sidebar controls use their natural height;
+only the two-line selection/update status reserves a stable height.
 
 The same rule is available to API consumers with an optional `anchor` query
 parameter on `/api/pairs` and `/api/stats-batch.json`:

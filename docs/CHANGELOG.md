@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-23 — Compact result status and metric alignment
+
+- Returned the sidebar controls to natural height, retaining only a fixed
+  two-line status: selection/result counts above, unapplied changes or the
+  latest visible result's HH:mm measurement time below.
+- Removed redundant per-card timestamps for normal measurements while keeping
+  missing, stale, loss and refresh-failure indicators on affected cards.
+- Centered five-column metrics and aligned dividers with the full 2×2 metric
+  text block in narrow and wide Results layouts.
+
 ## 2026-09-23 — P2 main page and isolated P3 trial deployed
 
 - Published the P2 main page and the separate opt-in `/chart-trial` with v2

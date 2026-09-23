@@ -88,9 +88,12 @@ already-open clients.
 In Fixed nodes mode, both the local pair preview and the API use the same
 fixed-to-non-fixed cross-product. Multiple comma-separated fixed IDs are
 accepted; fixed-to-fixed and non-fixed-to-non-fixed routes are omitted. The
-sidebar footer reserves stable control rows so selection status and Charts
-options do not resize the node list. Drawer and control transitions honor
-`prefers-reduced-motion`.
+sidebar footer uses natural height, while its selection/update status reserves
+exactly two text rows. Charts options expand smoothly; drawer and control
+transitions honor `prefers-reduced-motion`. The status time is the latest
+`measurement_updated_at` among currently displayed results, shown as HH:mm
+in the site's clock timezone. Ordinary measurements omit the per-card time
+line; exceptional states remain visible on their cards.
 
 The current visual contract is a dark, dense monitoring console:
 

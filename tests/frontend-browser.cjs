@@ -135,6 +135,7 @@ async function main() {
             groupBorder: getComputedStyle(document.querySelector('.pills')).borderTopWidth,
             routeStatsTop: getComputedStyle(card.querySelector('.card-right')).borderTopWidth,
             routeStatsLeft: getComputedStyle(card.querySelector('.card-right')).borderLeftWidth,
+            routeStatsPseudo: getComputedStyle(card.querySelector('.card-right'), '::before').borderLeftWidth,
             supportDivider: getComputedStyle(card.querySelector('.stat-support .stat-item')).borderLeftWidth,
             primaryDivider: getComputedStyle(card.querySelector('.stat-primary')).borderRightWidth,
             mainWidth: document.querySelector('#mainArea').getBoundingClientRect().width,
@@ -147,15 +148,63 @@ async function main() {
         assert.equal(visual.cardBorder, '0px');
         assert.equal(visual.groupBorder, '0px');
         assert.equal(visual.routeStatsTop, visual.mainWidth >= 1360 ? '0px' : '1px');
-        assert.equal(visual.routeStatsLeft, visual.mainWidth >= 1360 ? '1px' : '0px');
+        assert.equal(visual.routeStatsLeft, '0px');
+        assert.equal(visual.routeStatsPseudo, visual.mainWidth >= 1360 ? '1px' : '0px');
         assert.equal(visual.supportDivider, visual.mainWidth >= 1360 || visual.mainWidth <= 460 ? '0px' : '1px');
         assert.equal(visual.primaryDivider, visual.mainWidth <= 460 ? '1px' : '0px');
         assert.equal(visual.checkboxClip, 'inset(50%)');
         assert.equal(visual.horizontalOverflow, false);
+        assert.equal(await page.locator('.data-state').first().isVisible(), false, 'normal measurements should not repeat the timestamp in each card');
+        if (visual.mainWidth > 460 && visual.mainWidth < 1360) {
+          const centered = await page.evaluate(() => [...document.querySelector('.card .stats').querySelectorAll('.stat-item')].every(item => {
+            const center = rect => (rect.left + rect.right) / 2;
+            return Math.abs(center(item.getBoundingClientRect()) - center(item.querySelector('.stat-label').getBoundingClientRect())) < 2
+              && Math.abs(center(item.getBoundingClientRect()) - center(item.querySelector('.stat-value').getBoundingClientRect())) < 2;
+          }));
+          assert.equal(centered, true, `five-column metric content is not centered at ${width}px`);
+        }
+        if (visual.mainWidth <= 460 || visual.mainWidth >= 1360) {
+          const divider = await page.evaluate(() => {
+            const card = document.querySelector('.card');
+            const support = card.querySelector('.stat-support');
+            const text = [...support.querySelectorAll('.stat-label,.stat-value')].map(el => el.getBoundingClientRect());
+            const textTop = Math.min(...text.map(rect => rect.top));
+            const textBottom = Math.max(...text.map(rect => rect.bottom));
+            if (document.querySelector('#mainArea').getBoundingClientRect().width <= 460) {
+              const line = card.querySelector('.stat-primary').getBoundingClientRect();
+              return { top: Math.abs(line.top - textTop), bottom: Math.abs(line.bottom - textBottom) };
+            }
+            const right = card.querySelector('.card-right');
+            const rect = right.getBoundingClientRect();
+            const style = getComputedStyle(right, '::before');
+            return { top: Math.abs(rect.top + parseFloat(style.top) - textTop),
+              bottom: Math.abs(rect.bottom - parseFloat(style.bottom) - textBottom) };
+          });
+          assert.ok(divider.top <= 4 && divider.bottom <= 4, `two-by-two divider misses text edges at ${width}px: ${JSON.stringify(divider)}`);
+        }
       }
       await page.screenshot({ path: path.join(out, `results-${width}.png`), fullPage: true });
     }
     report.cases.push({ case: 'startup-labels-layout', cards: 8, requests: requests.length });
+    if (!baseline) {
+      assert.match(await page.locator('#selSummary').innerText(), /^3 nodes.*8 results$/);
+      assert.match(await page.locator('#selFreshness').innerText(), /^Updated \d{2}:\d{2}$/);
+      const freshness = await page.evaluate(() => {
+        const now = Math.floor(Date.now() / 1000);
+        for (const pair of currentPairs) statsCache[statsCacheKey(pair)].measurement_updated_at = now - 3600;
+        const latest = currentPairs.find(pair => pair.type === 'v6');
+        statsCache[statsCacheKey(latest)].measurement_updated_at = now - 120;
+        updateSelectionFreshness();
+        const all = document.getElementById('selFreshness').textContent;
+        setFilter('v4');
+        const v4 = document.getElementById('selFreshness').textContent;
+        setFilter('all');
+        return { all, v4, expectedAll: `Updated ${updateTimeFormat.format(new Date((now - 120) * 1000))}`,
+          expectedV4: `Updated ${updateTimeFormat.format(new Date((now - 3600) * 1000))}` };
+      });
+      assert.equal(freshness.all, freshness.expectedAll, 'freshness should use the latest result timestamp');
+      assert.equal(freshness.v4, freshness.expectedV4, 'freshness should follow the visible protocol filter');
+    }
     await page.setViewportSize({ width: 1440, height: 900 });
     if (!baseline) {
       await page.setViewportSize({ width: 1440, height: 600 });
@@ -187,9 +236,10 @@ async function main() {
       assert.equal(await cb.isChecked(), true);
       assert.equal(await page.locator('.axis-option').isVisible(), false);
       await page.locator('[data-mode="charts"]').click();
-      assert.equal(await page.locator('.axis-option').isVisible(), true);
+      await page.locator('.axis-option').waitFor({ state: 'visible' });
       assert.equal(await page.locator('#goBtn').innerText(), 'Show Charts');
       await page.setViewportSize({ width: 390, height: 844 });
+      await waitFor(page, () => document.getElementById('sidebar').inert);
       assert.equal(await page.locator('#sidebar').evaluate(el => el.inert), true);
       await page.locator('#toggleSidebar').click();
       assert.equal(await page.locator('#mainArea').evaluate(el => el.inert), true);
@@ -287,14 +337,19 @@ async function main() {
       await reset();
       const footerGeometry = () => page.evaluate(() => {
         const foot = document.querySelector('.sidebar-foot');
+        const info = foot.querySelector('.sel-info');
         return {
           height: foot.getBoundingClientRect().height,
           listHeight: document.querySelector('#sidebarInner').getBoundingClientRect().height,
+          statusHeight: info.getBoundingClientRect().height,
+          statusRows: [...info.children].map(row => row.getBoundingClientRect().height),
           rows: ['.selection-controls', '.pairing-mode', '.view-mode', '.axis-option', '.go-btn', '.sel-info']
             .map(selector => foot.querySelector(selector).offsetTop - foot.offsetTop),
         };
       });
       const initialFooter = await footerGeometry();
+      assert.equal(initialFooter.statusHeight, 40);
+      assert.deepEqual(initialFooter.statusRows, [20, 20]);
       for (const id of ['test_0', 'test_1', 'test_2', 'external'])
         await page.locator(`label[for="c_${id}"]`).click();
       assert.deepEqual(await footerGeometry(), initialFooter, 'selection changed footer geometry');
@@ -306,8 +361,10 @@ async function main() {
       assert.equal(await page.locator('[data-anchor-node="test_1"]').getAttribute('aria-pressed'), 'true');
       assert.equal(await page.locator('#goBtn').isEnabled(), true);
       assert.match(await page.locator('#selInfo').innerText(), /2 fixed.*12 results/);
+      assert.equal(await page.locator('#selFreshness').innerText(), 'Unapplied changes');
       assert.deepEqual(await footerGeometry(), initialFooter, 'fixed-node selection changed footer geometry');
       await page.locator('#goBtn').click(); await ready();
+      assert.match(await page.locator('#selFreshness').innerText(), /^Updated \d{2}:\d{2}$/);
       assert.equal(await page.locator('.card').count(), 12);
       assert.equal(batchAnchors.at(-1), 'test_0,test_1');
       assert.equal(await page.evaluate(() => currentPairs.some(p => ['test_0','test_1'].includes(p.source)
@@ -320,8 +377,12 @@ async function main() {
       await page.locator('[data-anchor-node="test_2"]').click();
       await page.locator('[data-anchor-node="external"]').click();
       await page.locator('[data-mode="charts"]').click();
-      assert.equal(await page.locator('.axis-option').isVisible(), true);
-      assert.deepEqual(await footerGeometry(), initialFooter, 'Charts mode changed footer geometry');
+      await page.locator('.axis-option').waitFor({ state: 'visible' });
+      await page.waitForTimeout(250);
+      const chartFooter = await footerGeometry();
+      assert.ok(chartFooter.height > initialFooter.height + 20, 'Charts option should expand the natural footer');
+      assert.equal(chartFooter.statusHeight, 40);
+      assert.deepEqual(chartFooter.statusRows, [20, 20]);
       const sidebarTransition = await page.locator('#sidebar').evaluate(el => getComputedStyle(el).transitionDuration);
       assert.notEqual(sidebarTransition, '0s');
       await page.locator('#toggleSidebar').click();
@@ -329,8 +390,11 @@ async function main() {
       assert.equal(await page.locator('#sidebar').evaluate(el => el.inert), true);
       await page.locator('#toggleSidebar').click();
       await page.waitForFunction(() => document.querySelector('#sidebar').getBoundingClientRect().width >= 279);
-      assert.deepEqual(await footerGeometry(), initialFooter, 'sidebar toggle changed footer geometry');
-      report.cases.push({ case: 'multi-fixed-stable-footer-animated-drawer', pairs: 12, passed: true });
+      assert.deepEqual(await footerGeometry(), chartFooter, 'sidebar toggle changed footer geometry');
+      await page.locator('.view-mode-btn[data-mode="stats"]').click();
+      await page.waitForTimeout(250);
+      assert.deepEqual(await footerGeometry(), initialFooter, 'Results mode did not restore the compact footer');
+      report.cases.push({ case: 'multi-fixed-two-line-status-natural-footer-animated-drawer', pairs: 12, passed: true });
     }
     await reset('busy'); await select();
     await page.waitForTimeout(3500);

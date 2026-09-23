@@ -68,7 +68,16 @@ function verifyPublicHtml(body, pageName) {
       controlsBorder: getComputedStyle(document.querySelector('.pills')).borderTopWidth,
       routeStatsDivider: getComputedStyle(document.querySelector('.card-right')).borderTopWidth,
       statItemDivider: getComputedStyle(document.querySelector('.stat-support .stat-item')).borderLeftWidth,
-      checkboxClip: getComputedStyle(document.querySelector('.node-cb')).clipPath }));
+      checkboxClip: getComputedStyle(document.querySelector('.node-cb')).clipPath,
+      normalStatusHidden: [...document.querySelectorAll('.data-state')].every(el => el.hidden),
+      footerHeight: document.querySelector('.sidebar-foot').getBoundingClientRect().height,
+      statusRows: [...document.querySelector('#selInfo').children].map(el => el.getBoundingClientRect().height),
+      freshness: document.querySelector('#selFreshness').textContent,
+      metricsCentered: [...document.querySelector('.card .stats').querySelectorAll('.stat-item')].every(item => {
+        const center = rect => (rect.left + rect.right) / 2;
+        return Math.abs(center(item.getBoundingClientRect()) - center(item.querySelector('.stat-label').getBoundingClientRect())) < 2
+          && Math.abs(center(item.getBoundingClientRect()) - center(item.querySelector('.stat-value').getBoundingClientRect())) < 2;
+      }) }));
     assert.equal(results.cards, 2);
     assert.equal(results.ext, 2);
     assert.equal(results.v6, 1);
@@ -79,6 +88,10 @@ function verifyPublicHtml(body, pageName) {
     assert.equal(results.routeStatsDivider, '1px');
     assert.equal(results.statItemDivider, '1px');
     assert.equal(results.checkboxClip, 'inset(50%)');
+    assert.equal(results.normalStatusHidden, true);
+    assert.deepEqual(results.statusRows, [20, 20]);
+    assert.match(results.freshness, /^Updated \d{2}:\d{2}$/);
+    assert.equal(results.metricsCentered, true);
     await page.screenshot({ path: path.join(output, 'results-desktop.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     const mobile = await page.evaluate(() => ({
@@ -86,16 +99,28 @@ function verifyPublicHtml(body, pageName) {
         .map(el => getComputedStyle(el).fontSize))],
       routeStatsDivider: getComputedStyle(document.querySelector('.card-right')).borderTopWidth,
       primaryDivider: getComputedStyle(document.querySelector('.stat-primary')).borderRightWidth,
-      overflow: document.documentElement.scrollWidth > innerWidth }));
-    assert.deepEqual(mobile, { metricSizes: ['16px'], routeStatsDivider: '1px',
-      primaryDivider: '1px', overflow: false });
+      overflow: document.documentElement.scrollWidth > innerWidth,
+      dividerTextGap: (() => {
+        const card = document.querySelector('.card');
+        const line = card.querySelector('.stat-primary').getBoundingClientRect();
+        const text = [...card.querySelectorAll('.stat-support .stat-label,.stat-support .stat-value')]
+          .map(el => el.getBoundingClientRect());
+        return Math.max(Math.abs(line.top - Math.min(...text.map(rect => rect.top))),
+          Math.abs(line.bottom - Math.max(...text.map(rect => rect.bottom))));
+      })() }));
+    assert.deepEqual({ ...mobile, dividerTextGap: undefined }, { metricSizes: ['16px'], routeStatsDivider: '1px',
+      primaryDivider: '1px', overflow: false, dividerTextGap: undefined });
+    assert.ok(mobile.dividerTextGap <= 4);
     await page.screenshot({ path: path.join(output, 'results-mobile.png'), fullPage: true });
     await page.locator('#toggleSidebar').click();
     assert.equal(await page.locator('#sidebar').evaluate(el => el.inert), false);
+    await page.waitForFunction(() => Math.abs(document.getElementById('sidebar').getBoundingClientRect().left) < 1);
     await page.screenshot({ path: path.join(output, 'drawer-mobile.png') });
     await page.locator('#toggleSidebar').click();
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.locator('[data-mode="charts"]').click();
+    await page.waitForTimeout(250);
+    assert.ok(await page.locator('.sidebar-foot').evaluate(el => el.getBoundingClientRect().height) > results.footerHeight + 20);
     await page.locator('#goBtn').click();
     await page.waitForFunction(() => document.querySelectorAll('.card-img img.ok').length === 2);
     const chartDividers = await page.evaluate(() => ({
@@ -158,6 +183,7 @@ function verifyPublicHtml(body, pageName) {
     for (const id of ['akari_jp', 'datawave_akari_hk'])
       await multi.locator(`[data-anchor-node="${id}"]`).click();
     assert.match(await multi.locator('#selInfo').innerText(), /2 fixed.*4 results/);
+    assert.equal(await multi.locator('#selFreshness').innerText(), 'Unapplied changes');
     assert.equal(await footerHeight(), initialFooterHeight);
     const pairResponse = await multi.request.get(`${origin}/api/pairs?nodes=akari_jp,datawave_akari_hk,google_dns&anchor=akari_jp,datawave_akari_hk`);
     assert.equal(pairResponse.status(), 200);
@@ -168,11 +194,19 @@ function verifyPublicHtml(body, pageName) {
       && (new URL(response.url()).searchParams.get('anchor') || '').split(',').sort().join(',')
         === 'akari_jp,datawave_akari_hk');
     await multi.locator('#goBtn').click();
-    assert.equal((await batch).status(), 200);
+    const batchResponse = await batch;
+    assert.equal(batchResponse.status(), 200);
+    const batchData = await batchResponse.json();
+    const newest = Math.max(...batchData.items.map(item => item.stats?.measurement_updated_at || 0));
+    const expectedFreshness = `Updated ${new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Shanghai', hour12: false, hour: '2-digit', minute: '2-digit'
+    }).format(new Date(newest * 1000))}`;
+    await multi.waitForFunction(expected => document.getElementById('selFreshness').textContent === expected, expectedFreshness);
     await multi.waitForFunction(() => document.querySelectorAll('.card').length === 4);
     assert.equal(await multi.locator('.card .badge-ext').count(), 4);
+    assert.equal(await multi.locator('.card .data-state:visible').count(), 0);
     await multi.screenshot({ path: path.join(output, 'multi-fixed-desktop.png'), fullPage: true });
-    const multiFixed = { cards: 4, fixed: 2, footerHeight: await footerHeight() };
+    const multiFixed = { cards: 4, fixed: 2, footerHeight: await footerHeight(), freshness: expectedFreshness };
 
     assert.deepEqual(errors, []);
     const appCsp = csp.filter(event => !(

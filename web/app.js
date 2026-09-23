@@ -42,8 +42,9 @@ const MAX_STATS_CACHE_BYTES = 2 * 1024 * 1024;
 let statsCacheBytes = 0;
 const CLIENT_STATS_TTL_MS = 60000;
 const STORED_STATS_TTL_MS = 300000;
-const measurementTimeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Shanghai', hour12: false,
-  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const updateTimeFormat = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Shanghai', hour12: false, hour: '2-digit', minute: '2-digit'
+});
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -350,12 +351,33 @@ function selectedFixedIds(selection) {
   return selection.filter(id => draftAnchors.has(id));
 }
 
+function updateSelectionFreshness() {
+  const line = document.getElementById('selFreshness');
+  if (document.getElementById('goBtn').dataset.pending === 'true') {
+    if (line.textContent !== 'Unapplied changes') line.textContent = 'Unapplied changes';
+    return;
+  }
+  const now = Date.now() / 1000;
+  let latest = 0;
+  for (const pair of currentPairs) {
+    if (activeFilter === 'v4' && pair.type !== 'v4') continue;
+    if (activeFilter === 'v6' && pair.type !== 'v6') continue;
+    if (activeFilter === 'ext' && !pair.ext) continue;
+    const stamp = statsCache[statsCacheKey(pair)]?.measurement_updated_at;
+    if (Number.isFinite(stamp) && stamp > latest && stamp <= now + 60) latest = stamp;
+  }
+  const label = latest ? `Updated ${updateTimeFormat.format(new Date(latest * 1000))}` : 'No update yet';
+  if (line.textContent !== label) line.textContent = label;
+}
+
 function updSel() {
   const s = getSel();
   const anchors = draftPairMode === 'fixed' ? selectedFixedIds(s) : [];
   let pairs = 0;
   let message = '';
-  if (draftPairMode === 'fixed' && anchors.length === 0) {
+  if (s.length < 2) {
+    message = 'Select at least 2 nodes';
+  } else if (draftPairMode === 'fixed' && anchors.length === 0) {
     message = 'Choose a fixed node';
   } else if (draftPairMode === 'fixed' && anchors.length === s.length) {
     message = 'Select a non-fixed node';
@@ -381,16 +403,14 @@ function updSel() {
   axisOption.classList.toggle('is-hidden', axisHidden);
   axisOption.inert = axisHidden;
   axisOption.setAttribute('aria-hidden', String(axisHidden));
-  const info = document.getElementById('selInfo');
-  const nextInfo = message
-    ? `<span class="selection-error">${message}</span>`
-    : s.length < 2
-      ? 'Select at least 2 nodes'
-      : `<b>${s.length}</b> nodes${anchors.length ? ` · <b>${anchors.length}</b> fixed` : ''} \u00b7 <b>${pairs}</b> results${pending ? ' · Unapplied changes' : ''}`;
-  if (info.innerHTML !== nextInfo) {
-    info.innerHTML = nextInfo;
-    UIComponents.flash(info);
+  const summary = document.getElementById('selSummary');
+  const nextSummary = `<b>${s.length}</b> nodes${anchors.length ? ` · <b>${anchors.length}</b> fixed` : ''}`
+    + (message ? ` · <span class="selection-error">${escapeHtml(message)}</span>` : ` · <b>${pairs}</b> results`);
+  if (summary.innerHTML !== nextSummary) {
+    summary.innerHTML = nextSummary;
+    UIComponents.flash(summary);
   }
+  updateSelectionFreshness();
 }
 
 function makePairs(sel, anchors = []) {
@@ -737,8 +757,9 @@ function paintDataState(id, data, cachedAt, error) {
   if (!status) return;
   const state = RequestState.dataStatus(data, cachedAt, Date.now(), error);
   status.dataset.state = state.state;
-  const text = state.label + (state.timestamp
-    ? ` · ${measurementTimeFormat.format(new Date(state.timestamp * 1000))} UTC+08:00` : '');
+  const ordinaryMeasurement = state.state === 'measured' && state.label === 'Last measurement';
+  status.hidden = ordinaryMeasurement;
+  const text = ordinaryMeasurement ? '' : state.label.replace(/^Last measurement · cached/, 'Cached result');
   if (status.textContent !== text) status.textContent = text;
 }
 
@@ -747,6 +768,7 @@ function refreshVisibleDataStates() {
     const key = statsCacheKey(pair);
     if (statsCache[key]) paintDataState(statsIdFor(pair), statsCache[key], statsCacheTimes[key], statsFailures.get(key));
   });
+  updateSelectionFreshness();
 }
 
 function cacheBatchItems(items, dur, cachedAt = Date.now()) {
@@ -845,6 +867,7 @@ async function refreshStatsBatch(nodeIds, pairs, dur, generation, signal, anchor
 
   if (generation !== renderGeneration) return;
   const outcomes = cacheBatchItems(data.items, dur);
+  updateSelectionFreshness();
   pairs.forEach(pair => { if (!outcomes.has(statsItemKey(pair))) outcomes.set(statsItemKey(pair), 'missing_response'); });
   try {
     // Persist only the user's requested selection, never an all-node snapshot.
@@ -900,8 +923,8 @@ async function showGraphs() {
   }
   suppressStatsAnimationGeneration = firstResults ? generation : -1;
   appliedSelection = sel.slice();
-  updSel();
   currentPairs = nextPairs;
+  updSel();
   pairGroupRanges = {};
   batchLoadingGeneration = generation;
 
@@ -918,6 +941,7 @@ async function showGraphs() {
 function setFilter(f) {
   activeFilter = f;
   updateFilterButtons();
+  updateSelectionFreshness();
   if (currentPairs.length === 0) return;
   renderGrid({ filterChange: true, preserveRequest: true });
 }
@@ -1114,7 +1138,7 @@ function cardContentMarkup(pair, charts) {
           <div class="stats" id="${statsIdFor(pair)}"></div>
         </div>
        </div>
-       <div class="data-state" aria-label="Measurement status">Waiting for measurements…</div>
+       <div class="data-state" aria-label="Measurement status" hidden></div>
        ${chartMarkup}`;
 }
 
@@ -1284,6 +1308,7 @@ function fetchStat(pair, id, dur, generation, signal) {
       rememberStats(key, d);
       statsFailures.delete(key);
       showCachedStat(pair, dur, generation !== suppressStatsAnimationGeneration);
+      updateSelectionFreshness();
     }).catch(error => {
       if (error.name === 'AbortError') return;
       if (generation === renderGeneration) {

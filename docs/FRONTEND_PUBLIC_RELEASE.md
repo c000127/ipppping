@@ -97,6 +97,37 @@ WebKit 26.5 的构建产物测试及 Python 68 项、Node 4 项均通过。公�
 `test-results/production-p2p3/`。发布后 `ipppping` active、`NRestarts=0`，
 SmokePing 容器仍在运行；未改节点采样、凭据或 RRD 数据。
 
+### 2026-09-23 自然高度侧栏与结果状态精简
+
+应用户反馈，侧栏底部控件不再固定总高度；仅节点选择状态保留两行各 20px。
+首行显示所选节点、Fixed 节点和结果数（或选择校验提示）；第二行有未提交
+更改时显示 `Unapplied changes`，否则显示当前过滤结果中最大
+`measurement_updated_at` 对应的 `Updated HH:mm`，使用站点时钟时区但不
+显示日期和时区。无结果时显示 `No update yet`。普通结果卡不再重复显示
+`Last measurement` 和时间戳；丢包、缺失、过期、刷新失败仍有逐卡提示。
+一行五列指标居中；窄屏 2×2 与宽屏 Results 的分隔线跟右侧文字块上下边缘
+对齐。移动抽屉改为不透明滑入，避免淡入途中与下层结果文字重叠。
+
+最终发布指纹：`styles.f4dc930f4bf3fcaa.css`、
+`app.a1675b972ad11386.js`；主页面 HTML SHA-256 为
+`aab65a480aa09ea47fbb8fbafec8f3c61f3e641b06f5fd848217caa837305e1c`，
+试用页为 `d3f0b514c2805508d0fcf9c4d20926803a1cb577d81b0d03ba79655dd0e6c7a3`。
+最终发布包 SHA-256 为
+`8a8372b5edc2e1c18907b9d8ea38a2095a2f01b959909f14d20d415d5595f914`，
+本机与主控校验一致；主控 staging 为 `/root/ipppping-stage-Zgkfqk`，
+最终自动备份为 `/root/ipppping-backup-20260923T054037864258Z`。
+此前同轮首次部署的 staging 与备份分别是 `/root/ipppping-stage-8LhdoV`
+和 `/root/ipppping-backup-20260923T053748283405Z`。
+
+本地构建、Python 72 项、Node 4 项、Chrome 153 与 WebKit 26.5 主页面
+回归通过；Chrome axe 无报告项，独立试用页 Chrome/WebKit 回归通过。
+最终公网 Chrome 再次逐字节核验两个 HTML 与八个指纹资源、真实双栈
+结果/PNG、独立试用页以及多 Fixed 流程。普通状态行隐藏、五项指标居中、
+移动 2×2 分隔线对齐误差 0px、状态两行均为 20px；Results 底部控件区
+为 236px，Charts 展开时自然增高。四条多 Fixed 结果的侧栏 HH:mm 与
+批量 API 中最大测量时间一致。应用页面无未捕获错误；截图和 JSON 存于
+Git 忽略的 `test-results/production-p2p3/`。节点、采样、凭据与 RRD 未改动。
+
 ## 验证证据
 
 - 本地 Python 68 项、Node 请求状态 4 项、Chrome 构建产物主页面回归、

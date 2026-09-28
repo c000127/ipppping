@@ -113,8 +113,15 @@ const ChartMatrixTrial = (() => {
           columns.start[i] >= columns.end[i] || columns.start[i] < previous ||
           columns.start[i] < matrix.end - matrix.dur || columns.end[i] > matrix.end ||
           !Number.isInteger(columns.count[i]) || columns.count[i] < 1 ||
+          !Number.isInteger(columns.loss_event_count[i]) ||
+          columns.loss_event_count[i] < 0 || columns.loss_event_count[i] > columns.count[i] ||
+          !Number.isInteger(columns.full_loss_count[i]) ||
+          columns.full_loss_count[i] < 0 || columns.full_loss_count[i] > columns.loss_event_count[i] ||
           !Number.isInteger(columns.missing_latency_count[i]) ||
           columns.missing_latency_count[i] < 0 || columns.missing_latency_count[i] > columns.count[i] ||
+          !Number.isInteger(columns.missing_measurement_count[i]) ||
+          columns.missing_measurement_count[i] < 0 ||
+          columns.missing_measurement_count[i] > columns.count[i] - columns.loss_event_count[i] ||
           columns.missing_latency_count[i] > 0 && columns.median_mean_ms[i] !== null) {
         throw new Error('Invalid series intervals or gap');
       }
@@ -150,40 +157,44 @@ const ChartMatrixTrial = (() => {
     const maximum = unified ? visibleMax : Math.max(1, item.summary.max_median_ms || 0) * 1.1;
     const axis = { stroke: color('--text-sec'), font,
       ticks: { show: false }, border: { show: false } };
+    const lossRuns = [], lossPeaks = [];
+    for (let i = 0; i < c.end.length; i++) {
+      const mean = c.loss_mean_pct[i], peak = c.loss_max_pct[i];
+      if (!Number.isFinite(peak) || peak <= 0) continue;
+      // A filled interval requires loss in every consolidated source bucket.
+      // Otherwise its peak is known, but the event's exact time is not.
+      const sustained = c.loss_event_count[i] === c.count[i] &&
+        c.missing_measurement_count[i] === 0 && Number.isFinite(mean) && mean > 0;
+      if (sustained) {
+        const previous = lossRuns.at(-1);
+        if (previous && previous.end === c.start[i] && previous.mean === mean) previous.end = c.end[i];
+        else lossRuns.push({ start: c.start[i], end: c.end[i], mean });
+        if (peak > mean) lossPeaks.push({ start: c.start[i], end: c.end[i], from: mean, peak });
+      } else lossPeaks.push({ start: c.start[i], end: c.end[i], from: 0, peak });
+    }
     const marks = u => {
       const ctx = u.ctx, px = uPlot.pxRatio || window.devicePixelRatio || 1;
       ctx.save(); ctx.beginPath(); ctx.rect(u.bbox.left, u.bbox.top, u.bbox.width, u.bbox.height); ctx.clip();
       const top = Math.floor(u.bbox.top), bottom = Math.ceil(u.bbox.top + u.bbox.height);
-      const entirelyLost = i => c.loss_max_pct[i] === 100 && c.loss_mean_pct[i] === 100 &&
-        c.count[i] > 0 && c.full_loss_count[i] === c.count[i];
+      const xStart = value => value === matrix.end - matrix.dur
+        ? Math.floor(u.bbox.left) : Math.round(u.valToPos(value, 'x', true));
+      const xEnd = value => value === matrix.end
+        ? Math.ceil(u.bbox.left + u.bbox.width) : Math.round(u.valToPos(value, 'x', true));
+      const yLoss = value => value <= 0 ? bottom : value >= 100 ? top :
+        Math.max(top, Math.min(bottom - 1, Math.round(u.valToPos(value, 'loss', true))));
       ctx.fillStyle = markColor;
-      ctx.globalAlpha = .5;
-      // Merge adjacent complete-loss bins so a 100% outage across the window
-      // becomes one seamless rectangle spanning the entire plotted timeline.
-      let runStart = null, runEnd = null;
-      const fillRun = () => {
-        if (runStart === null) return;
-        const left = Math.floor(u.valToPos(runStart, 'x', true));
-        const right = Math.ceil(u.valToPos(runEnd, 'x', true));
-        ctx.fillRect(left, top, right - left, bottom - top);
-      };
-      for (let i = 0; i < c.end.length; i++) {
-        if (!entirelyLost(i)) { fillRun(); runStart = runEnd = null; continue; }
-        if (runStart !== null && c.start[i] !== runEnd) {
-          fillRun(); runStart = null;
-        }
-        if (runStart === null) runStart = c.start[i];
-        runEnd = c.end[i];
+      ctx.globalAlpha = .65;
+      for (const run of lossRuns) {
+        const left = xStart(run.start), right = xEnd(run.end), y = yLoss(run.mean);
+        if (right > left && y < bottom) ctx.fillRect(left, y, right - left, bottom - y);
       }
-      fillRun();
-      ctx.globalAlpha = .8;
-      for (let i = 0; i < c.end.length; i++) {
-        const loss = c.loss_max_pct[i];
-        if (!Number.isFinite(loss) || loss <= 0 || entirelyLost(i)) continue;
-        const x = u.valToPos((c.start[i] + c.end[i]) / 2, 'x', true);
-        if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) continue;
-        const y = loss >= 100 ? top : Math.max(top, Math.min(bottom - 1, Math.floor(u.valToPos(loss, 'loss', true))));
-        ctx.fillRect(Math.floor(x - 2 * px), y, Math.ceil(4 * px), bottom - y);
+      for (const event of lossPeaks) {
+        const left = xStart(event.start), right = xEnd(event.end);
+        const high = yLoss(event.peak), low = yLoss(event.from);
+        if (right <= left || high >= low) continue;
+        const width = Math.min(Math.ceil(3 * px), right - left);
+        const x = Math.floor((left + right - width) / 2);
+        ctx.fillRect(x, high, width, low - high);
       }
       ctx.restore();
     };
@@ -442,7 +453,7 @@ const ChartMatrixTrial = (() => {
           '<span class="route-arrow" aria-hidden="true"><span class="route-arrow-inline">→</span><span class="route-arrow-down">↓</span></span>' +
           '<span class="route-node route-target">' + escapeHtml(pair.tgtLabel || label(pair.target)) + '</span>' +
           '</div><div class="card-right"><div class="stats"></div></div></div>' +
-          (appliedMode === 'charts' ? '<div class="card-img trial-plot" role="img" aria-label="Latency and packet loss timeline"></div>' : '') +
+          (appliedMode === 'charts' ? '<div class="card-img trial-plot" role="img" aria-label="Latency line, intervals with loss in every bucket, and peak-loss marks"></div>' : '') +
           '</div>';
         const stats = statsFor(index);
         UIComponents.updateStats(card.querySelector('.stats'), stats);

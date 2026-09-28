@@ -79,7 +79,8 @@
       </div>
       <div id="chart-key" class="matrix-key" hidden>
         <span class="key-rtt">Mean median RTT</span>
-        <span class="key-loss" title="Peak loss is a narrow bar; an interval with complete 100% loss fills its entire time span">Peak loss</span>
+        <span class="key-loss-fill" title="Every consolidated bucket in this interval lost some packets; width is the interval and height is mean loss, not all pings lost">Loss in every bucket</span>
+        <span class="key-loss-peak" title="Narrow mark shows the peak somewhere within the aggregate interval, not an exact ping timestamp">Peak within interval</span>
       </div>
       <div class="grid stats-only" id="graphGrid" aria-live="off"></div>
     </main>

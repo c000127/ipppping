@@ -59,7 +59,7 @@ function summary(pair, end, dur, maximum) {
     summary: { average_ms: allLoss ? null : visualCase ? 7.25 : 10,
       min_median_ms: allLoss ? null : visualCase ? 3.3 : 10,
       max_median_ms: allLoss ? null : maximum,
-      loss_pct: allLoss ? 100 : visualCase ? 12.5 : 0, measurement_coverage: 1 } };
+      loss_pct: allLoss ? 100 : visualCase ? 25 : 0, measurement_coverage: 1 } };
 }
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://local'), pathname = url.pathname;
@@ -96,17 +96,19 @@ const server = http.createServer((req, res) => {
       data.encoding = 'columns-v1';
       if (pair.source === 'v0' && pair.target === 'ext' && pair.type === 'v4') {
         const median = [4, 4.5, 5.5, null, 7.5, 9, null, 6.5, 8.5, 8];
-        const loss = [0, 25, 0, 100, 0, 0, 100, 0, 0, 0];
-        const count = loss.map((_, i) => i === 3 ? 4 : 1);
+        const lossMean = [0, 25, 0, 25, 25, 25, 100, 0, 37.5, 0];
+        const lossMax = [0, 25, 0, 100, 25, 25, 100, 0, 50, 0];
+        const events = [0, 1, 0, 1, 1, 1, 1, 0, 2, 0];
+        const count = lossMean.map((_, i) => i === 3 ? 4 : i === 8 ? 2 : 1);
         data.columns = {
           start: median.map((_, i) => start + i * dur / median.length),
           end: median.map((_, i) => start + (i + 1) * dur / median.length),
           count, median_mean_ms: median,
           min_median_ms: median.map((value, i) => i === 3 ? 5.3 : value === null ? null : value - 0.7),
           max_median_ms: median.map((value, i) => i === 3 ? 6.7 : value === null ? null : value + 0.7),
-          loss_mean_pct: loss.map((value, i) => i === 3 ? 25 : value), loss_max_pct: loss,
-          loss_event_count: loss.map(value => Number(value > 0)),
-          full_loss_count: loss.map(value => Number(value === 100)),
+          loss_mean_pct: lossMean, loss_max_pct: lossMax,
+          loss_event_count: events,
+          full_loss_count: lossMax.map((value, i) => Number(value === 100 && i !== 8)),
           missing_latency_count: median.map(value => Number(value === null)),
           missing_measurement_count: median.map(() => 0)
         };
@@ -164,6 +166,7 @@ const server = http.createServer((req, res) => {
       prototype.fillRect = function(x, y, width, height) {
         if (window.__captureLossDraws && this.fillStyle === '#f49b81')
           window.__lossDraws.push({ x, y, width, height, alpha: this.globalAlpha,
+            color: this.fillStyle,
             clip: this.__lastTestClip,
             lossText: this.canvas.closest('.card')?.querySelector('[data-metric="4"] .stat-number')?.textContent });
         return original.fillRect.call(this, x, y, width, height);
@@ -228,11 +231,12 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.locator('.trial-plot').count(), 8);
     assert.equal(await page.locator('.card .badge-ext').count(), 4);
     await assertFiveColumnDesign();
-    assert.deepEqual(await page.locator('#chart-key span').allTextContents(), ['Mean median RTT', 'Peak loss']);
+    assert.deepEqual(await page.locator('#chart-key span').allTextContents(),
+      ['Mean median RTT', 'Loss in every bucket', 'Peak within interval']);
     assert.equal(await page.locator('.key-range').count(), 0);
-    await page.locator('.card').filter({ hasText: '12.5%' }).first().scrollIntoViewIfNeeded();
+    await page.locator('.card').filter({ hasText: '25.0%' }).first().scrollIntoViewIfNeeded();
     await page.waitForFunction(() => [...document.querySelectorAll('.card')].some(item =>
-      item.querySelector('.stat-item[data-metric="4"] .stat-number')?.textContent === '12.5' &&
+      item.querySelector('.stat-item[data-metric="4"] .stat-number')?.textContent === '25.0' &&
       item.querySelector('.trial-plot .uplot')));
     await page.locator('.card').filter({ hasText: '100.0%' }).first().scrollIntoViewIfNeeded();
     await page.waitForFunction(() => [...document.querySelectorAll('.card')].some(item =>
@@ -240,7 +244,7 @@ const server = http.createServer((req, res) => {
       item.querySelector('.trial-plot .uplot')));
     const lossVisual = await page.evaluate(() => {
       const marked = [...document.querySelectorAll('.card')].find(item =>
-        item.querySelector('.stat-item[data-metric="4"] .stat-number')?.textContent === '12.5');
+        item.querySelector('.stat-item[data-metric="4"] .stat-number')?.textContent === '25.0');
       const full = [...document.querySelectorAll('.card')].find(item =>
         item.querySelector('.stat-item[data-metric="4"] .stat-number')?.textContent === '100.0');
       const zero = [...document.querySelectorAll('.card')].find(item =>
@@ -251,28 +255,39 @@ const server = http.createServer((req, res) => {
       return { colored: getComputedStyle(marked.querySelector('[data-metric="4"] .stat-value')).color,
         full: getComputedStyle(full.querySelector('[data-metric="4"] .stat-value')).color,
         zero: getComputedStyle(zero.querySelector('[data-metric="4"] .stat-value')).color,
-        draws, key: getComputedStyle(document.querySelector('.key-loss'), '::before').backgroundColor,
-        keyImage: getComputedStyle(document.querySelector('.key-loss'), '::before').backgroundImage,
+        draws, keys: [...document.querySelectorAll('.key-loss-fill,.key-loss-peak')].map(element => {
+          const style = getComputedStyle(element, '::before');
+          return { color: style.backgroundColor, alpha: style.opacity, image: style.backgroundImage };
+        }),
         medianBand: getComputedStyle(document.body).getPropertyValue('--trial-range-fill').trim() };
     });
-    assert.equal(lossVisual.colored, 'rgb(246, 147, 14)');
+    assert.equal(lossVisual.colored, 'rgb(247, 137, 17)');
     assert.equal(lossVisual.full, 'rgb(239, 68, 68)');
     assert.equal(lossVisual.zero, 'rgb(185, 185, 185)');
-    assert.equal(lossVisual.key, 'rgb(244, 155, 129)');
-    assert.equal(lossVisual.keyImage, 'none');
+    assert.deepEqual(lossVisual.keys, Array(2).fill({
+      color: 'rgb(244, 155, 129)', alpha: '0.65', image: 'none' }));
     assert.equal(lossVisual.medianBand, '');
-    const visualDraws = lossVisual.draws.filter(mark => mark.lossText === '12.5');
+    const visualDraws = lossVisual.draws.filter(mark => mark.lossText === '25.0');
     const fullDraws = lossVisual.draws.filter(mark => mark.lossText === '100.0');
-    assert.equal(visualDraws.filter(mark => mark.alpha === .5).length, 1,
-      'the single entirely lost interval fills its true time span');
-    const mixedPeak = visualDraws.find(mark => mark.alpha === .8 && mark.y <= mark.clip.y);
-    const partial = visualDraws.find(mark => mark.alpha === .8 && mark.y > mark.clip.y);
-    assert.ok(mixedPeak && partial, JSON.stringify(visualDraws));
-    assert.ok(mixedPeak.width <= 10 && mixedPeak.height >= mixedPeak.clip.height);
-    assert.ok(partial.width <= 10 && partial.height < partial.clip.height / 2);
+    assert.ok([...visualDraws, ...fullDraws].every(mark => mark.color === '#f49b81' && mark.alpha === .65),
+      'filled intervals and narrow peaks must have the same color and opacity');
+    assert.equal(visualDraws.length, 6, JSON.stringify(visualDraws));
+    const mixedPeak = visualDraws.find(mark => mark.width <= 10 && mark.y <= mark.clip.y);
+    const meanPeak = visualDraws.find(mark => mark.width <= 10 && mark.y > mark.clip.y);
+    const partialRuns = visualDraws.filter(mark => mark.width > 10 && mark.height < mark.clip.height / 2);
+    const fullInterval = visualDraws.find(mark => mark.width > 10 && mark.y <= mark.clip.y);
+    assert.ok(mixedPeak && meanPeak && fullInterval, JSON.stringify(visualDraws));
+    assert.equal(partialRuns.length, 3, JSON.stringify(partialRuns));
+    assert.ok(partialRuns.some(mark => mark.width > partialRuns[0].width * 1.8),
+      'adjacent sustained-loss bins should merge into a wider block');
+    assert.ok(mixedPeak.height >= mixedPeak.clip.height && mixedPeak.width <= 10);
+    assert.ok(meanPeak.height < meanPeak.clip.height / 2 && meanPeak.width <= 10);
+    assert.ok(partialRuns.some(mark => mark.y === meanPeak.y + meanPeak.height &&
+      mark.x <= meanPeak.x && mark.x + mark.width >= meanPeak.x + meanPeak.width),
+      'peak stem should meet, not overlap, the mean-loss block');
     assert.equal(fullDraws.length, 1, 'adjacent full-loss bins must merge into one span');
     const span = fullDraws[0], clip = span.clip;
-    assert.ok(span.alpha === .5 && span.x <= clip.x && span.x + span.width >= clip.x + clip.width &&
+    assert.ok(span.x <= clip.x && span.x + span.width >= clip.x + clip.width &&
       span.y <= clip.y && span.y + span.height >= clip.y + clip.height, JSON.stringify(span));
     fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
     await page.locator('.card').filter({ hasText: '100.0%' }).first().screenshot({

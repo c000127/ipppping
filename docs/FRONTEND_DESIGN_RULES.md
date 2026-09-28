@@ -41,19 +41,24 @@ browser viewport.
 ## Trial chart marks
 
 The opt-in matrix chart has no hover crosshair, median-range band, or
-per-sample whisker/cap/halo icons. Nonzero peak loss uses a narrow, fixed
-coral-colored time bar, with height showing loss percentage. **Do not color
-the bars by severity or apply a vertical color gradient.** Only the card's
-Loss number follows the continuous amber→orange→red severity scale; 0% is
-neutral. A 100% peak in a mixed interval stays a narrow full-height bar.
-When **every** consolidated bucket in an interval has 100% loss, fill the
-entire measured interval width and plot height instead of overlaying a thin
-center bar. Merge adjacent complete-loss intervals into one seamless span;
-if they cover the whole queried window, the entire plot width is filled.
-Unmeasured gaps must remain unfilled. Missing latency remains a break in the
-RTT line. The legend must describe the marks actually drawn. The production
-PNG renderer and its data contract are unchanged until a separately approved
-migration.
+per-sample whisker/cap/halo icons. All chart-loss marks use the **same fixed
+coral color and .65 opacity**, without overlapping fill and peak rectangles.
+Do not color chart marks by severity or apply a vertical gradient. Only the
+card's Loss number follows the amber→orange→red percentage scale; 0% is neutral.
+
+At the consolidated RRD-bucket resolution, loss in **every** source bucket of
+an aggregate interval fills that interval's true time width up to its mean
+loss percentage. Merge adjacent intervals only when their means are equal,
+so there are no seams and no fabricated smoothing. If the peak exceeds that
+mean, a narrow stem extends **from the mean to the peak**, not through the
+filled block. If only some buckets have loss or the interval contains missing
+measurements, draw only a narrow peak mark. Its horizontal position is the
+aggregate interval's center, **not an exact ping timestamp**. At 100% loss in
+every bucket, the filled region reaches the plot top; a whole-window outage
+fills the plot width. Unmeasured gaps remain unfilled. Missing RTT breaks its
+line. The legend must distinguish filled mean-loss intervals from peak marks.
+The production PNG renderer and the v2 data contract are unchanged until a
+separately approved migration.
 
 ## Required checks
 

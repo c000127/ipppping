@@ -128,6 +128,13 @@ Each output bin describes its true start/end and number of source buckets:
   `missing_measurement_count`: retain event severity/count without pretending to
   preserve unbounded individual event timestamps in a bounded response.
 
+The opt-in matrix trial uses an interval-width mean-loss block only when
+`loss_event_count == count` and `missing_measurement_count == 0`; a narrow mark
+otherwise shows `loss_max_pct` at the aggregate interval's center. Where a
+filled mean-loss block also has a higher maximum, the narrow peak mark begins
+at the mean height. These shapes do not locate an individual lost ping within
+the interval. Adjacent equal-height fills may merge without altering data.
+
 Exact event timing inside an aggregate is not implied. Use a larger allowed
 budget/shorter window to inspect more precise consolidated buckets. No interpolation,
 spline smoothing, gap filling or derived jitter is used. Dense alternating gaps

@@ -472,3 +472,32 @@ manifest SHA-256 均为
 仍未完成。发布后公网低速 Chrome 验证两条 Google DNS 双栈链路、
 多 Fixed 外部链路、固定色图例、首页两张 PNG 和全部 11 个指纹资源
 哈希均通过；`ipppping` 与 Caddy active，`NRestarts=0`。
+
+## 2026-09-28 混合丢包编码与块/条同色
+
+独立 `/chart-matrix-trial` 将整块和细条统一为珊瑚色、`.65` 透明度，
+消除旧版 `.5`/`.8` 合成后的色差。所有源桶均有丢包时，块的宽度表示
+合并区间，块高表示平均丢包率；有更高峰值时细条从均值上缘延伸至
+峰值。正常与丢包混杂、或含缺测的区间只显示窄峰值标记，不虚构精确
+丢包时刻。图例和设计规则已同步；主页 PNG 与单链路试验页未改。
+
+本机构建及主控 staging `/root/ipppping-stage-mixedloss-SFkeqg9v` 的
+manifest SHA-256 均为
+`028457d099fa3104e651417861bc7652f9684d755c82a8cedd29036d63596ad7`。
+安装器健康检查通过，自动备份于
+`/root/ipppping-backup-20260928T125142494371Z`。矩阵 CSS/JS 指纹分别为
+`chart-matrix-trial.f79b6c0d67cacddc.css`、
+`chart-matrix-trial.eca743f2d6c19cdf.js`；矩阵页 HTML SHA-256 为
+`f432ac95c622ebcc02f5f528b67b06079447d77d6419a4d6e62d49427c87a9ae`。
+首页与单链路页哈希仍为
+`3329562ba2d07fdf1edc1b221bafc2caf84312fafa65c7719e7c384931bf2af2`、
+`0e6d099ffc5a651d1a54848a06313d5747c94faf2adedbc805fb23cf226642aa`。
+
+发布前 81 项 Python、矩阵契约、主页面 Chrome 构建版、单链路试验和
+矩阵 480 路/axe 回归通过；模拟图同时覆盖正常、孤立、连续、混合峰值
+与整窗 100% 丢包，色值/透明度及绘制范围断言通过。60 秒/30 次滚动中
+DOM 29,849、监听器 55、Canvas 4 不增长，GC 后 heap 从 3.51 MB
+至 3.74 MB，无脚本错误；这不是 G4 长测。发布后公网低速 Chrome
+验证独立矩阵双栈链路、多 Fixed 外部链路、首页 Results/两张 PNG
+和全部 11 个指纹资产，均通过。`ipppping`、Caddy active 且
+`NRestarts=0`；线上页面及矩阵资源哈希与本地清单一致。

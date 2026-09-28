@@ -137,9 +137,15 @@
 .matrix-integrated-trial .matrix-key span { display: inline-flex; align-items: center; gap: 6px; }
 .matrix-integrated-trial .matrix-key span::before { content: ''; display: inline-block; flex: none; }
 .matrix-integrated-trial .key-rtt::before { width: 16px; border-top: 2px solid var(--trial-rtt); }
-.matrix-integrated-trial .key-loss::before {
+.matrix-integrated-trial .key-loss-fill::before {
+  width: 13px; height: 7px;
+  background: var(--trial-loss-mark);
+  opacity: .65;
+}
+.matrix-integrated-trial .key-loss-peak::before {
   width: 3px; height: 10px;
   background: var(--trial-loss-mark);
+  opacity: .65;
 }
 .matrix-integrated-trial .trial-plot {
   width: 100%;

@@ -153,6 +153,14 @@ To roll back later, restore the listed files from that backup and restart
 `ipppping.service`. Restore the Caddy backup and validate/reload to re-enable
 legacy browsing if necessary.
 
+The later P4 experiment adds a separate `/chart-matrix-trial` page and bounded
+`/api/v2/summary-batch` endpoint without altering the default PNG matrix.
+Its pages contain at most 32 summaries, one page is admitted globally at a
+time, and each uses at most two workers on the 2-vCPU controller. A browser
+trial holds at most four Canvas instances and an eight-entry / 2 MiB series
+cache. This is a resource ceiling, not proof of production-wide savings or
+permission to switch the default renderer; see `FRONTEND_P4_REPORT.md`.
+
 For slave rollback, disable `ipppping-slave-recover.timer`, restore the previous
 override and scripts from its recorded backup and recreate with both Compose
 files. If no prior override existed, use the untouched base Compose alone.

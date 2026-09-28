@@ -294,3 +294,37 @@ G4 全矩阵 Canvas 资源上限、G5 默认迁移、24–48 小时观察及回�
 10 分钟/112 次循环与进程内存抽样，未见持续增长。结合固定 RRD 正确性、既有
 Android Chrome 实机操作及同路由公网成本，**单链路 G3 闸门通过**。此结论
 只允许开始 P4 的有界研发；主页面仍使用 PNG，不表示 G4/G5 已通过。
+
+## 2026-09-28 P4 独立矩阵试验入口
+
+发布范围仅为新 `/api/v2/summary-batch` 和独立 `/chart-matrix-trial`，不改
+主页面默认 PNG。安装前 81 项 Python、Node 分页契约、本地 Chrome 480 链路
+滚动/固定节点/局部缺失、axe 自动检查和主页面 17 组回归通过；主控隔离
+合成 RRD 的 480 路径基准及本地 Chrome 30 分钟生命周期记录见
+[P4 报告](FRONTEND_P4_REPORT.md)。
+
+本机构建清单 SHA-256 为
+`3c1950db6120fbecfd57a1d27167fcd8406eb26a58fd872ae5b1b885cef07ca5`；
+主控 staging `/root/ipppping-stage-p4-lOuc0l` 的清单及 `server.py` 均与本机
+逐项哈希相同。`deploy/install-api.py` 在 06:47 UTC 安装并自动备份至
+`/root/ipppping-backup-20260928T064702995808Z`。主页面 HTML 源文件 SHA-256
+仍为 `3617d0cf04b62daf4a00fc6eca7ce454190f6ec9e04b253f18276db4932d0bdf`，
+原单链路试用页仍为 `04be375071b426c6cc9622fd5702c84cc8a790776713ed420b3e52f0b74af76b`；
+新增矩阵页为 `bb9265dd4d62bb43dcc6d18da64aafd1d820a96b3659a074fe5424161b8ac427`，
+指纹 JS 为 `chart-matrix-trial.20292b49f589b5dc.js` 和
+`matrix-data.75b822e655ccc6fc.js`。旧资源未删除，安装器保留了兼容回退。
+
+安装后本地 API、Caddy、`/healthz` 均正常，`ipppping` 的 `NRestarts=0`，
+freshness timer 下一轮执行成功。公网 Chrome 低速核验：
+`akari_jp→google_dns` v4/v6 的两项摘要可获取，gzip 传输有效、v4 序列
+与摘要峰值相等；两个 Fixed VPS 到 Google DNS 显示 4 个 Ext v4/v6 结果，
+可见 Canvas 生成，无页面脚本错误。此核验不等于 G4 完整生产矩阵压测。
+最终构建另完成本地 480 卡 10 分钟 Chrome 进程/GPU 内存抽样，未见 DOM、
+监听器或 Canvas 积累；进程内存有波动，尚不足以代替 60 分钟和主页面集成后
+的观察，详见 P4 报告。
+Cloudflare 会在公网 HTML 尾部动态注入挑战脚本，公网整页哈希会变化；
+主控源文件 SHA 和主页面指纹资产才是本次“不改默认页面”的校验依据。
+
+若试验入口出现回归，先保留主页面 PNG 服务并停止使用该独立入口；
+需要回退时依据上述自动备份恢复对应应用文件后重启 `ipppping`，不要碰
+`config/nodes.json`、RRD 或节点密钥。尚未做破坏性回滚演练；G4/G5 未通过。

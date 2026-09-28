@@ -81,6 +81,15 @@ class SummaryBatchTests(unittest.TestCase):
             self.assertEqual((status, json.loads(body)['error']['code']), (503, 'busy'))
             slots.release.assert_not_called()
 
+        self.assertTrue(server.V2_SUMMARY_SLOTS.acquire(blocking=False))
+        try:
+            with patch.object(server, 'NODES', NODES), patch.object(server, 'read_snapshot') as read:
+                body, status = server.handle_v2_summary_batch(self.params())
+                self.assertEqual((status, json.loads(body)['error']['code']), (503, 'busy'))
+                read.assert_not_called()
+        finally:
+            server.V2_SUMMARY_SLOTS.release()
+
         def resolve(source, target, typ):
             if source == 'akari_jp' and typ == 'v4':
                 raise FileNotFoundError
@@ -120,7 +129,7 @@ class SummaryBatchTests(unittest.TestCase):
         self.assertEqual(len(json.loads(body)['items']), 32)
         self.assertEqual(calls.call_count, 32)
         self.assertGreaterEqual(peak, 1)
-        self.assertLessEqual(peak, server.MAX_GRAPH_WORKERS)
+        self.assertLessEqual(peak, server.MAX_V2_SUMMARY_WORKERS)
 
     def test_near_maximum_matrix_only_reads_requested_pages(self):
         nodes = [{'id': f'v{i}', 'label': f'V{i}', 'group': 'vps', 'v4': True, 'v6': True}

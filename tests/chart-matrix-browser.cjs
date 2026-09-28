@@ -3,12 +3,30 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
+const { execFileSync } = require('node:child_process');
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
 const nodes = Array.from({ length: 16 }, (_, i) => ({ id: `v${i}`, label: `VPS ${i}`, group: 'vps', v4: true, v6: true }));
 nodes.push({ id: 'ext', label: 'External', group: 'dns', v4: true, v6: true });
 const requests = [];
 let lastRoutes = [];
+let partialMissing = false;
+async function chromePrivateMemory(session) {
+  if (!session || process.platform !== 'win32') return null;
+  const info = await session.send('SystemInfo.getProcessInfo');
+  const ids = info.processInfo.map(item => item.id).filter(id => Number.isInteger(id) && id > 0);
+  if (!ids.length) return null;
+  const command = `$ids=@(${ids.join(',')}); Get-Process -Id $ids -ErrorAction SilentlyContinue | `
+    + 'Select-Object Id,PrivateMemorySize64 | ConvertTo-Json -Compress';
+  const raw = execFileSync('powershell.exe', ['-NoProfile', '-Command', command],
+    { encoding: 'utf8', timeout: 10000 }).trim();
+  if (!raw) return null;
+  const values = JSON.parse(raw), list = Array.isArray(values) ? values : [values];
+  const types = new Map(info.processInfo.map(item => [item.id, item.type]));
+  return { processPrivateBytes: list.reduce((sum, item) => sum + item.PrivateMemorySize64, 0),
+    gpuPrivateBytes: list.filter(item => types.get(item.Id) === 'GPU')
+      .reduce((sum, item) => sum + item.PrivateMemorySize64, 0) };
+}
 function pairs(query) {
   const chosen = nodes.filter(node => query.get('nodes').split(',').includes(node.id));
   const fixed = new Set((query.get('anchor') || '').split(',').filter(Boolean));
@@ -48,7 +66,10 @@ const server = http.createServer((req, res) => {
     const dur = Number(url.searchParams.get('dur'));
     if (pathname === '/api/v2/summary-batch') {
       const offset = Number(url.searchParams.get('offset')), limit = Number(url.searchParams.get('limit'));
-      const items = routes.slice(offset, offset + limit).map((pair, i) => summary(pair, end, dur, offset + i + 10));
+      const items = routes.slice(offset, offset + limit).map((pair, i) =>
+        partialMissing && pair.source === 'v1' && pair.type === 'v6'
+          ? { source: pair.source, target: pair.target, protocol: pair.type, error: 'no_data' }
+          : summary(pair, end, dur, offset + i + 10));
       res.end(JSON.stringify({ schema: 'ipppping.summary-batch.v2', selection_id: 'a'.repeat(64),
         end, dur, offset, limit, total: routes.length,
         next_offset: offset + items.length < routes.length ? offset + items.length : null, items })); return;
@@ -96,6 +117,16 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.locator('.matrix-card .badge').first().textContent(), 'Ext');
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
     assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4));
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    assert.equal(await page.evaluate(() => ChartMatrixTrial.instanceCount), 0);
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
     if (process.env.RUN_AXE) {
       const violations = await page.evaluate(async () => (await axe.run(document, {
         runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] }
@@ -114,6 +145,12 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
     await page.locator('#axis').selectOption('unified');
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    partialMissing = true;
+    await page.locator('#load').click();
+    await page.waitForFunction(() => document.getElementById('status').textContent.startsWith('Ready: 4 routes'));
+    assert.equal(await page.locator('.matrix-card .plot.problem').count(), 1);
+    assert.match(await page.locator('.matrix-card .plot.problem').textContent(), /No chart: no_data/);
+    partialMissing = false;
     for (const id of ['v0', 'v1']) await page.locator(`#nodes [data-id="${id}"] .fixed`).click();
     await page.locator('#nodes [data-id="ext"] .choose').click();
     for (let i = 2; i < 16; i++) await page.locator(`#nodes [data-id="v${i}"] .choose`).click();
@@ -133,6 +170,7 @@ const server = http.createServer((req, res) => {
     const samples = [];
     if (soakSeconds > 0) {
       const cdp = await page.context().newCDPSession(page);
+      const browserCdp = process.platform === 'win32' ? await browser.newBrowserCDPSession() : null;
       await cdp.send('Performance.enable');
       const sample = async elapsed => {
         await cdp.send('HeapProfiler.collectGarbage');
@@ -144,7 +182,7 @@ const server = http.createServer((req, res) => {
             pixels: [...document.querySelectorAll('canvas')].reduce((sum, canvas) => sum + canvas.width * canvas.height, 0) }))
         ]);
         const heap = perf.metrics.find(metric => metric.name === 'JSHeapUsedSize')?.value;
-        const row = { elapsed, ...dom, heap, ...client };
+        const row = { elapsed, ...dom, heap, ...client, ...await chromePrivateMemory(browserCdp) };
         samples.push(row);
         assert.ok(row.instances <= 4 && row.cache <= 8 && row.cacheBytes <= 2 * 1024 * 1024);
         assert.ok(row.pending <= 4 && row.canvases <= 4 && row.pixels <= 4 * 1280 * 220 * 4);
@@ -160,11 +198,12 @@ const server = http.createServer((req, res) => {
         cycle++;
       }
       await sample(Date.now() - started);
-      const target = path.join(root, 'test-results/p4-matrix-browser-soak.json');
+      const target = path.join(root, `test-results/p4-matrix-browser-soak-${soakSeconds}s.json`);
       fs.mkdirSync(path.dirname(target), { recursive: true });
       fs.writeFileSync(target, JSON.stringify({ soakSeconds, cycles: cycle, samples, errors }, null, 2));
       console.log('Soak report:', target);
       await cdp.detach();
+      await browserCdp?.detach();
     }
     assert.equal(errors.length, 0, errors.join('\n'));
     const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3.5 });

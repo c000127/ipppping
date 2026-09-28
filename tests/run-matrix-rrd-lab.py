@@ -3,7 +3,7 @@
 Copies source text over stdin, does not install it, touch production RRDs or
 restart a service. The 480 hard links have distinct path/cache keys but share
 one hot inode; this is a subprocess/CPU/API cost test, not cold-disk evidence.
-Usage: python tests/run-matrix-rrd-lab.py root@HOST PORT
+Usage: python tests/run-matrix-rrd-lab.py root@HOST PORT [workers=4]
 """
 import json
 from pathlib import Path
@@ -21,6 +21,8 @@ with tempfile.TemporaryDirectory(prefix='ipppping-p4-lab-') as temp:
         (root / name).write_text(contents)
     sys.path.insert(0, str(root))
     import server
+    server.MAX_GRAPH_WORKERS = worker_limit
+    server.MAX_V2_SUMMARY_WORKERS = worker_limit
     end = int(time.time()) // 60 * 60 - 120
     start = end - 10800
     rrd = root / 'synthetic.rrd'
@@ -86,7 +88,7 @@ with tempfile.TemporaryDirectory(prefix='ipppping-p4-lab-') as temp:
     assert counts['calls'] == 960, counts
     report = {'synthetic': True, 'production_rrds_read': False,
               'distinct_path_cache_keys': 480, 'shared_hot_inode': True,
-              'pages': 15, 'items': 480, 'page_limit': 32,
+              'pages': 15, 'items': 480, 'page_limit': 32, 'worker_limit': worker_limit,
               'total_wall_ms': (time.perf_counter() - before) * 1000,
               'page_ms': {'min': min(page_times), 'median': sorted(page_times)[7], 'max': max(page_times)},
               'rrdtool_calls': counts['calls'], 'peak_rrdtool_processes': counts['peak'],
@@ -101,10 +103,13 @@ with tempfile.TemporaryDirectory(prefix='ipppping-p4-lab-') as temp:
 '''
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         raise SystemExit(__doc__)
+    workers = int(sys.argv[3]) if len(sys.argv) == 4 else 4
+    if workers not in (1, 2, 4):
+        raise SystemExit('workers must be 1, 2 or 4')
     payload = {name: (ROOT / name).read_text(encoding='utf-8') for name in FILES}
-    script = 'payload = ' + repr(payload) + '\n' + REMOTE
+    script = 'payload = ' + repr(payload) + '\nworker_limit = ' + repr(workers) + '\n' + REMOTE
     result = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10',
                              '-o', 'StrictHostKeyChecking=yes', '-p', sys.argv[2],
                              sys.argv[1], 'python3', '-'], input=script.encode(),
@@ -112,7 +117,7 @@ if __name__ == '__main__':
     if result.returncode:
         raise SystemExit(result.stderr.decode(errors='replace'))
     report = json.loads(result.stdout)
-    target = ROOT / 'test-results/p4-matrix-rrd-lab.json'
+    target = ROOT / f'test-results/p4-matrix-rrd-lab-{workers}.json'
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(json.dumps(report, indent=2))

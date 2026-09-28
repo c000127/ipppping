@@ -1,8 +1,10 @@
 # Experimental series v2 contract
 
-Status: deployed 2026-09-23 for the separate opt-in `/chart-trial` page only;
-legacy `/api/series`, stats and PNG remain compatible. The main page still uses
-PNG charts. See the [public release record](FRONTEND_PUBLIC_RELEASE.md).
+Status: v2 series deployed 2026-09-23 for the separate opt-in `/chart-trial`;
+the bounded summary-batch endpoint and `/chart-matrix-trial` were deployed as
+another opt-in path on 2026-09-28. Legacy `/api/series`, stats and PNG remain
+compatible. The main page still uses PNG charts. See the
+[public release record](FRONTEND_PUBLIC_RELEASE.md).
 
 `GET /api/v2/series?source=ID&target=ID&type=v4&dur=10800&points=720`
 
@@ -17,11 +19,11 @@ An API test checks that actual HTTP gzip decompresses to the identity response.
 `GET /api/v2/summary` accepts the same parameters but omits `bins` and aggregation
 metadata. Both use the same snapshot/statistics implementation and existing
 8 MiB / 256-entry total stats cache, not independent unlimited caches. A batch
-summary and matrix integration were deferred until G3 passed. P4 development now
-includes a bounded summary-batch endpoint, but it is not yet deployed or used by
-the production Charts page.
+summary and matrix integration were deferred until G3 passed. P4 now exposes
+a bounded summary-batch endpoint for its separate trial page, but the production
+main Charts page does not use it.
 
-## P4 summary-batch draft (local development only)
+## P4 summary-batch (opt-in trial; not main Charts)
 
 `GET /api/v2/summary-batch?nodes=ID,ID&anchor=ID,ID&dur=10800&end=E&offset=0&limit=16`
 uses the same selection and multi-Fixed direction rules as `/api/pairs`. `anchor`
@@ -37,9 +39,10 @@ does not discard the other summaries or automatically request PNG.
 the chosen minute-aligned `end`, which the client must explicitly reuse on every
 page to avoid crossing a sampling boundary while constructing one unified axis.
 The client must also reject pages whose `selection_id` or `total` differs.
-The existing 20-node/500-pair selection limits apply. Each page obeys the
-configured shared RRDtool worker limit and batch admission limit (both default
-to four), shared with legacy stats-batch. Gzip is negotiated with
+The existing 20-node/500-pair selection limits apply. Each page uses at most
+two RRDtool workers (or fewer if the configured shared worker limit is lower).
+Only one v2 summary page is admitted at a time, alongside the shared batch
+admission limit (default four) and executor used by legacy stats-batch. Gzip is negotiated with
 `Accept-Encoding` and `Vary`;
 `Cache-Control: no-store` prevents a browser from silently reusing a partial
 matrix. A busy page returns 503 with `Retry-After: 2`. Raw RRD snapshots share
@@ -50,9 +53,10 @@ summary page and visible series request explicitly reuses that value. It checks
 `selection_id`, `total`, page order, route identity and window before drawing.
 Only after all summaries arrive does it freeze the unified Y axis. At most four
 visible Canvas instances and two series requests run at once; the series cache
-is limited to eight entries / 2 MiB. This trial is not deployed or linked from
-the production main page. Full-matrix real-RRD load and long-duration budgets
-remain G4 work.
+is limited to eight entries / 2 MiB. This trial is public but not linked from
+the production main page. A 480-route hot-inode synthetic RRD benchmark and
+30-minute local Chrome lifecycle test are recorded in the [P4 report](FRONTEND_P4_REPORT.md);
+full production-scale load, main-page integration and final G4 acceptance remain open.
 
 ## Parameters and errors
 

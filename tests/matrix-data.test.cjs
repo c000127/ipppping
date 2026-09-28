@@ -53,5 +53,9 @@ function transport(pairs, mutate = x => x) {
   }
   await assert.rejects(MatrixData.load(['one', 'one'], [], 10800, end, fetchJson), /invalid node selection/);
   await assert.rejects(MatrixData.load(['one', 'two'], ['three'], 10800, end, fetchJson), /invalid Fixed selection/);
+  const cancelled = new AbortController(), stopped = transport(pairs);
+  await assert.rejects(MatrixData.load(['one', 'two'], [], 10800, end, stopped.fetchJson,
+    cancelled.signal, () => cancelled.abort()), error => error.name === 'AbortError');
+  assert.equal(stopped.calls.length, 2, 'a hidden/cancelled matrix must not request a second page');
   console.log('Matrix summary pagination and contract tests passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

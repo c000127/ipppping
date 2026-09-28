@@ -28,6 +28,8 @@ from series_v2 import read_snapshot, wire_response, accepts_gzip
 BATCH_EXECUTOR = ThreadPoolExecutor(max_workers=MAX_GRAPH_WORKERS, thread_name_prefix="stats")
 BATCH_SLOTS = threading.BoundedSemaphore(MAX_BATCH_REQUESTS)
 MAX_V2_SUMMARY_PAGE = 32
+MAX_V2_SUMMARY_WORKERS = min(MAX_GRAPH_WORKERS, 2)
+V2_SUMMARY_SLOTS = threading.BoundedSemaphore(1)
 
 SECURITY_HEADERS = [
     ("X-Content-Type-Options", "nosniff"),
@@ -639,11 +641,15 @@ def handle_v2_summary_batch(params, compressed=False):
     page = pairs[offset:offset + limit]
     if page and not BATCH_SLOTS.acquire(blocking=False):
         return json_error("busy", "summary capacity reached; retry later", HTTPStatus.SERVICE_UNAVAILABLE)
+    if page and not V2_SUMMARY_SLOTS.acquire(blocking=False):
+        BATCH_SLOTS.release()
+        return json_error("busy", "a summary page is already running; retry later", HTTPStatus.SERVICE_UNAVAILABLE)
     try:
         items = list(windowed_map(BATCH_EXECUTOR, lambda pair: _v2_summary_batch_item(pair, end - dur, end),
-                                  page, MAX_GRAPH_WORKERS)) if page else []
+                                  page, MAX_V2_SUMMARY_WORKERS)) if page else []
     finally:
         if page:
+            V2_SUMMARY_SLOTS.release()
             BATCH_SLOTS.release()
     next_offset = offset + len(items)
     pair_keys = [(pair["source"], pair["target"], pair["type"]) for pair in pairs]

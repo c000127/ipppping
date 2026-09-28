@@ -286,8 +286,10 @@ const ChartMatrixTrial = (() => {
   window.addEventListener('resize', () => { for (const index of [...active.keys()]) dispose(index); scheduleVisible(); });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
+      controller?.abort(); generation++;
       for (const item of pending.values()) item.abort();
       for (const index of [...active.keys()]) dispose(index);
+      if (!matrix) $('status').textContent = 'Paused while hidden. Submit again to build the matrix.';
     } else scheduleVisible();
   });
   window.addEventListener('pagehide', () => {

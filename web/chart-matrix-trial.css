@@ -16,6 +16,13 @@
   --trial-loss-mid: #f97316;
   --trial-loss-high: #ef4444;
   --trial-loss-mark: #f49b81;
+  --trial-motion-ease: cubic-bezier(.16, 1, .3, 1);
+  --trial-motion-slide-ease: cubic-bezier(.2, .8, .2, 1);
+  --trial-motion-fast: 150ms;
+  --trial-motion-enter: 160ms;
+  --trial-motion-slide: 180ms;
+  --trial-motion-pulse: 240ms;
+  --trial-motion-reveal: 220ms;
   --radius: 4px;
   --control-radius: 4px;
   font-variant-numeric: tabular-nums;
@@ -38,14 +45,32 @@
 }
 .matrix-integrated-trial .trial-back:hover { color: var(--text); }
 .matrix-integrated-trial .sidebar { border-right: 1px solid var(--trial-rule); }
+.matrix-integrated-trial .sidebar {
+  transition: flex-basis var(--trial-motion-slide) var(--trial-motion-ease),
+    width var(--trial-motion-slide) var(--trial-motion-ease),
+    opacity var(--trial-motion-fast) var(--trial-motion-ease), visibility 0s;
+}
+.matrix-integrated-trial .sidebar.collapsed {
+  transition: flex-basis var(--trial-motion-slide) var(--trial-motion-ease),
+    width var(--trial-motion-slide) var(--trial-motion-ease),
+    opacity var(--trial-motion-fast) var(--trial-motion-ease),
+    visibility 0s linear var(--trial-motion-slide);
+}
 .matrix-integrated-trial .sidebar-foot {
   background: var(--bg-panel);
   border-top: 1px solid var(--trial-rule);
+}
+.matrix-integrated-trial .sidebar-foot button,
+.matrix-integrated-trial .sidebar-foot select {
+  transition: background-color var(--trial-motion-fast) var(--trial-motion-ease),
+    color var(--trial-motion-fast) var(--trial-motion-ease),
+    opacity var(--trial-motion-fast) var(--trial-motion-ease);
 }
 .matrix-integrated-trial .section-head { margin-bottom: 5px; }
 .matrix-integrated-trial .node {
   position: relative;
   border-radius: 3px;
+  transition: background-color var(--trial-motion-fast) var(--trial-motion-ease);
 }
 .matrix-integrated-trial .node.on { background: rgba(187, 163, 255, .075); }
 .matrix-integrated-trial .node.on::before {
@@ -61,6 +86,25 @@
 .matrix-integrated-trial .node-anchor[aria-pressed="true"] {
   color: var(--accent2);
   background: rgba(187, 163, 255, .1);
+}
+.matrix-integrated-trial .node-anchor {
+  transition: background-color var(--trial-motion-fast) var(--trial-motion-ease),
+    color var(--trial-motion-fast) var(--trial-motion-ease),
+    opacity var(--trial-motion-fast) var(--trial-motion-ease);
+}
+.matrix-integrated-trial .node-anchor.fixed-node-selecting {
+  animation: trial-fixed-in var(--trial-motion-enter) var(--trial-motion-ease);
+}
+.matrix-integrated-trial .node-anchor.fixed-node-deselecting {
+  animation: trial-fixed-out var(--trial-motion-enter) var(--trial-motion-ease);
+}
+@keyframes trial-fixed-in {
+  from { opacity: .65; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes trial-fixed-out {
+  from { opacity: .65; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .matrix-integrated-trial .badge {
   border-radius: 3px;
@@ -79,12 +123,46 @@
   background: #151515;
   border-radius: 4px;
 }
+.matrix-integrated-trial .pills,
+.matrix-integrated-trial .pairing-mode,
+.matrix-integrated-trial .view-mode { position: relative; isolation: isolate; }
+.matrix-integrated-trial .segment-indicator {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: 0;
+  border-radius: 3px;
+  background: #262626;
+  pointer-events: none;
+  z-index: 0;
+}
+.matrix-integrated-trial [data-motion-ready="true"] .segment-indicator {
+  transition: width var(--trial-motion-slide) var(--trial-motion-slide-ease),
+    transform var(--trial-motion-slide) var(--trial-motion-slide-ease);
+}
+.matrix-integrated-trial .pill,
+.matrix-integrated-trial .pairing-mode-btn,
+.matrix-integrated-trial .view-mode-btn { position: relative; z-index: 1; background: transparent; }
+.matrix-integrated-trial .pill:hover,
+.matrix-integrated-trial .pairing-mode-btn:hover,
+.matrix-integrated-trial .view-mode-btn:hover { background: transparent; }
 .matrix-integrated-trial .pill.on,
 .matrix-integrated-trial .pairing-mode-btn.on,
 .matrix-integrated-trial .view-mode-btn.on {
   color: var(--text);
-  background: #262626;
+  background: transparent;
 }
+.matrix-integrated-trial .axis-option,
+.matrix-integrated-trial .axis-option.is-hidden {
+  transition: max-height var(--trial-motion-enter) var(--trial-motion-ease),
+    padding var(--trial-motion-enter) var(--trial-motion-ease),
+    margin var(--trial-motion-enter) var(--trial-motion-ease),
+    opacity var(--trial-motion-enter) var(--trial-motion-ease),
+    transform var(--trial-motion-enter) var(--trial-motion-ease),
+    visibility 0s linear var(--trial-motion-enter);
+}
+.matrix-integrated-trial .axis-option:not(.is-hidden) { transition-delay: 0s; }
 .matrix-integrated-trial .go-btn {
   background: #262626;
 }
@@ -109,6 +187,7 @@
 }
 .matrix-integrated-trial .card {
   background: var(--bg-card);
+  transition: background-color var(--trial-motion-fast) var(--trial-motion-ease);
 }
 .matrix-integrated-trial .card:hover { background: #101010; }
 .matrix-integrated-trial .route { letter-spacing: -.025em; }
@@ -118,6 +197,7 @@
 .matrix-integrated-trial .stat-item[data-metric="4"] .stat-value {
   color: var(--trial-loss-current, var(--text-sec));
 }
+.matrix-integrated-trial .stat-value { border-radius: 2px; }
 .matrix-integrated-trial .matrix-key {
   position: sticky;
   top: 0;
@@ -167,11 +247,33 @@
 .matrix-integrated-trial .trial-plot[aria-busy="true"]:empty::before { content: 'Loading visible series…'; }
 .matrix-integrated-trial .trial-plot.problem { color: var(--warning); padding: 60px 14px 0; }
 .matrix-integrated-trial .trial-plot .uplot { margin-inline: auto; }
+.matrix-integrated-trial .trial-reveal {
+  position: absolute;
+  background: var(--trial-plot);
+  transform-origin: right center;
+  pointer-events: none;
+  z-index: 2;
+}
 .matrix-integrated-trial .is-error .stats { opacity: .72; }
 @media (max-width: 768px) {
   .matrix-integrated-trial .trial-mark { display: none; }
   .matrix-integrated-trial .trial-back { font-size: 11px; }
+  .matrix-integrated-trial .sidebar,
+  .matrix-integrated-trial .sidebar.mobile-open {
+    transition: transform var(--trial-motion-slide) var(--trial-motion-ease),
+      visibility 0s linear var(--trial-motion-slide);
+  }
+  .matrix-integrated-trial .sidebar.mobile-open { transition-delay: 0s; }
+  .matrix-integrated-trial .sidebar-overlay,
+  .matrix-integrated-trial .sidebar-overlay.show {
+    transition: opacity var(--trial-motion-fast) var(--trial-motion-ease),
+      visibility 0s linear var(--trial-motion-slide);
+  }
+  .matrix-integrated-trial .sidebar-overlay.show { transition-delay: 0s; }
 }
 @media (prefers-reduced-motion: reduce) {
   .matrix-integrated-trial .node-anchor { animation: none !important; }
+  .matrix-integrated-trial .segment-indicator,
+  .matrix-integrated-trial .axis-option,
+  .matrix-integrated-trial .axis-option.is-hidden { transition: none !important; }
 }

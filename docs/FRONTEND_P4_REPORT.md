@@ -165,6 +165,23 @@ DOM 节点是五指标卡完整呈现 480 条链路的成本，G4 仍需较长�
 峰值、连续完整 100%、平均/峰值分离及恢复正常，截图保存在忽略的
 `test-results/p4-matrix-card.png` 和 `p4-matrix-all-loss.png`。
 
+## 2026-09-29 独立矩阵页统一动效
+
+按 [IBM Carbon Motion](https://carbondesignsystem.com/elements/motion/overview/)
+的 productive motion、避免回弹和照顾 reduced motion 的原则，仅在独立
+矩阵试验页设置短时长 token。三个真实分段控件（过滤、配对、视图）使用
+180 ms 共享高亮滑块；时间范围仍为原生下拉框，不伪装为分段控件。
+Fixed nodes、侧栏及 Unified Y-axis 展开统一为无回弹短位移/淡入。
+
+Results/Charts 仍需按 Show 应用，不改变既有请求语义。请求进行中或失败
+时保留旧结果；成功后同步替换，至多对当前视口六张卡片做 4 px、160 ms
+入场与每张 14 ms 的微交错。仅手动重新提交且指标真正改变时，Current
+数值与非零 Loss 数值使用一次 240 ms 微光；时钟更新不触发数据动画。
+Canvas 首次可见时在**绘图区**上用轻量覆盖层完成 220 ms 水平揭示，
+不逐帧重算 uPlot、不遮坐标轴；滚动回访或统一轴切换不重播。
+`prefers-reduced-motion` 禁用 CSS 与 JS 动画，但仍立即显示最终状态。
+按钮的 `aria-pressed` 和数值内容不依赖动画传递。
+
 ## G4 仍需完成
 
 1. 已完成热 inode 的隔离 `rrdtool` 基准和小规模生产路由可用性；仍需生产

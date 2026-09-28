@@ -1,6 +1,6 @@
 # Frontend visual invariants
 
-Updated 2026-09-28. These are acceptance rules for both the production page
+Updated 2026-09-29. These are acceptance rules for both the production page
 and the opt-in matrix trial, not optional styling suggestions. When changing
 `web/styles.css`, `web/chart-matrix-trial.css`, the metric markup, or chart
 rendering, update the corresponding Chrome assertions before release.
@@ -59,6 +59,29 @@ fills the plot width. Unmeasured gaps remain unfilled. Missing RTT breaks its
 line. The legend must distinguish filled mean-loss intervals from peak marks.
 The production PNG renderer and the v2 data contract are unchanged until a
 separately approved migration.
+
+## Trial motion, only on `/chart-matrix-trial`
+
+Use productive, short motion: 150–180 ms for controls/cards, 220 ms for the
+one-time plot reveal, and 240 ms for a changed number. Entrance moves no more
+than 4 px with `cubic-bezier(.16, 1, .3, 1)`; the segmented indicator uses
+`cubic-bezier(.2, .8, .2, 1)`. No bounce, scale overshoot, animated counter,
+per-sample drawing, or chart motion on every scroll. The native time-range
+select remains a select; only the actual filter, pairing, and view segments
+receive sliding indicators. Indicator elements are decorative and must not
+alter group height or keyboard focus.
+
+Results/Charts is a draft setting until **Show Results/Charts** is submitted.
+Keep the old grid visible while the request is pending or fails; replace it
+only when a complete new response is ready. Animate at most six currently
+visible cards with 14 ms stagger, never all 480. On a manual re-submit, pulse
+only a genuinely changed Current value and a changed positive Loss value;
+there is no automatic one-second data refresh. A first-visible chart may use
+a 220 ms compositor reveal over its plot rectangle, not repeated Canvas
+redraws or an overlay covering the axes. Never replay the reveal on scroll
+re-entry or unified-axis toggles. Cancel animations on replacement/disposal.
+`prefers-reduced-motion: reduce` must present final states immediately with
+no CSS/WAAPI transition, while preserving selected state and data semantics.
 
 ## Required checks
 

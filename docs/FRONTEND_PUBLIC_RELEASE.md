@@ -501,3 +501,38 @@ DOM 29,849、监听器 55、Canvas 4 不增长，GC 后 heap 从 3.51 MB
 验证独立矩阵双栈链路、多 Fixed 外部链路、首页 Results/两张 PNG
 和全部 11 个指纹资产，均通过。`ipppping`、Caddy active 且
 `NRestarts=0`；线上页面及矩阵资源哈希与本地清单一致。
+
+## 2026-09-29 独立矩阵页统一动效
+
+仅更新 `/chart-matrix-trial` 的 HTML、CSS、JS：三个分段控件采用同一
+180 ms 滑块；Fixed nodes、侧栏、Unified Y-axis 用短时无回弹动效。
+Results/Charts 的 Show 提交期间保留旧结果，成功后只给视口内至多
+六张卡片做 4 px、160 ms 入场。手动刷新且数值改变时，Current/Loss
+可各触发一次 240 ms 微光。图表仅首次可见时对绘图区做 220 ms 水平
+揭示，不反复绘制 Canvas。减弱动态效果关闭这些动画。行为规范与
+手工验收口径见 [前端视觉不变量](FRONTEND_DESIGN_RULES.md)。主页面
+PNG、单链路页、v2 API 和采样服务未改。
+
+最终构建和主控 staging `/root/ipppping-stage-motion-final-mKEvoGf4` 的
+manifest SHA-256 均为
+`426f9fde82d1995e88ff69c4a1bab97ad9b6abe64c753f6a15582e4e112ef0f9`。
+安装器健康检查通过，自动备份于
+`/root/ipppping-backup-20260928T161508668413Z`（UTC）。矩阵 CSS/JS
+指纹分别为 `chart-matrix-trial.cc0b27d397962e06.css` 和
+`chart-matrix-trial.71dabdb65b46f3ce.js`，矩阵页 HTML SHA-256 为
+`2139efeabd3b135e9915bd3352635e5944b8260e4e40b12239c49cf246682344`。
+同日较早的初版已被最终版取代；若需回到本次动效改动前，较早安装
+保留的备份为 `/root/ipppping-backup-20260928T161000525330Z`（UTC）。
+首页和单链路页 HTML 哈希仍为
+`3329562ba2d07fdf1edc1b221bafc2caf84312fafa65c7719e7c384931bf2af2`、
+`0e6d099ffc5a651d1a54848a06313d5747c94faf2adedbc805fb23cf226642aa`。
+
+发布前 81 项 Python、矩阵契约、本地 Chrome 主页面/单链路/矩阵
+480 路与 axe 回归均通过；测试覆盖延迟与失败查询保留旧卡片、
+数值变化脉冲、分段滑块对齐、绘图区揭示、后台中断恢复和 reduced
+motion。60 秒/30 次滚动中 DOM 29,877、监听器 57、Canvas 4 数量
+不增长，GC 后 JS heap 3.95→4.08 MB，无脚本错误；并非 G4 长测。
+发布后低速公网 Chrome 验证双栈链路、多 Fixed 外部链路、滑块
+180 ms 与 reduced motion 0 ms、首页 Results/两张 PNG 及全部 11 个
+指纹资源，均通过。线上 HTML/矩阵资源哈希与清单一致；`ipppping`、
+Caddy active，`NRestarts=0`。

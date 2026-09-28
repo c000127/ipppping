@@ -62,6 +62,17 @@ const expectedStylesAsset = '/static/assets/' + Object.keys(release.assets).find
     });
     assert.deepEqual(design, { noBorder: true, fullSeparator: true, aligned: true });
     await page.locator('[data-mode="charts"]').click();
+    await page.waitForTimeout(210);
+    const motion = await page.locator('#viewMode').evaluate(group => {
+      const button = group.querySelector('button.on'), indicator = group.querySelector('.segment-indicator');
+      const selected = button.getBoundingClientRect(), slider = indicator.getBoundingClientRect();
+      return { indicators: document.querySelectorAll('.segment-indicator').length,
+        delta: Math.abs(selected.left - slider.left) + Math.abs(selected.width - slider.width),
+        duration: getComputedStyle(indicator).transitionDuration,
+        decorative: indicator.getAttribute('aria-hidden') };
+    });
+    assert.equal(motion.indicators, 3);
+    assert.ok(motion.delta < 2 && motion.duration.includes('0.18s') && motion.decorative === 'true', JSON.stringify(motion));
     await page.locator('#goBtn').click();
     await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 2 routes'));
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
@@ -88,10 +99,13 @@ const expectedStylesAsset = '/static/assets/' + Object.keys(release.assets).find
     assert.equal(await page.locator('.card').count(), 4);
     assert.ok((await page.locator('.route').allTextContents()).every(title => title.includes('Google DNS')));
     assert.ok((await page.locator('.card').first().locator('.badge').allTextContents()).includes('Ext'));
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    assert.equal(await page.locator('#viewMode .segment-indicator').evaluate(indicator =>
+      getComputedStyle(indicator).transitionDuration), '0s');
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ site: origin, total: data.total, end: data.end,
       compressed: response.headers.get('content-encoding'), v4MaxMs: full.summary.max_median_ms,
-      multiFixedExternalRoutes: 4,
+      multiFixedExternalRoutes: 4, motion,
       canvasInstances: await page.evaluate(() => ChartMatrixTrial.instanceCount),
       mainAppAsset: expectedAppAsset, mainStylesAsset: expectedStylesAsset, errors }, null, 2));
   } finally { await browser.close(); }

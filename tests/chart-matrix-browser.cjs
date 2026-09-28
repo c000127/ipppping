@@ -13,6 +13,7 @@ nodes.push({ id: 'ext', label: 'External', group: 'dns', v4: true, v6: true });
 const requests = [];
 let lastRoutes = [];
 let partialMissing = false;
+let statsEpoch = 0, statsDelayMs = 0, summaryDelayMs = 0, failNextStats = false;
 async function chromePrivateMemory(session) {
   if (!session || process.platform !== 'win32') return null;
   const info = await session.send('SystemInfo.getProcessInfo');
@@ -74,9 +75,19 @@ const server = http.createServer((req, res) => {
     const end = url.searchParams.has('end') ? Number(url.searchParams.get('end')) : Math.floor(Date.now() / 60000) * 60;
     const dur = Number(url.searchParams.get('dur'));
     if (pathname === '/api/stats-batch.json') {
-      res.end(JSON.stringify({ items: routes.map(pair => ({ ...pair,
-        stats: { current_ms: 10, avg_ms: 10, min_ms: 8, max_ms: 12,
-          loss_pct: pair.ext ? 2 : 0, measurement_updated_at: end - 60 } })) })); return;
+      if (failNextStats) {
+        failNextStats = false;
+        const fail = () => res.writeHead(500).end(JSON.stringify({ error: 'simulated' }));
+        if (statsDelayMs) setTimeout(fail, statsDelayMs);
+        else fail();
+        return;
+      }
+      const result = JSON.stringify({ items: routes.map(pair => ({ ...pair,
+        stats: { current_ms: 10 + statsEpoch, avg_ms: 10, min_ms: 8, max_ms: 12,
+          loss_pct: pair.ext ? 2 + statsEpoch : 0, measurement_updated_at: end - 60 } })) });
+      if (statsDelayMs) setTimeout(() => res.end(result), statsDelayMs);
+      else res.end(result);
+      return;
     }
     if (pathname === '/api/v2/summary-batch') {
       const offset = Number(url.searchParams.get('offset')), limit = Number(url.searchParams.get('limit'));
@@ -84,9 +95,12 @@ const server = http.createServer((req, res) => {
         partialMissing && pair.source === 'v1' && pair.type === 'v6'
           ? { source: pair.source, target: pair.target, protocol: pair.type, error: 'no_data' }
           : summary(pair, end, dur, offset + i + 10));
-      res.end(JSON.stringify({ schema: 'ipppping.summary-batch.v2', selection_id: 'a'.repeat(64),
+      const result = JSON.stringify({ schema: 'ipppping.summary-batch.v2', selection_id: 'a'.repeat(64),
         end, dur, offset, limit, total: routes.length,
-        next_offset: offset + items.length < routes.length ? offset + items.length : null, items })); return;
+        next_offset: offset + items.length < routes.length ? offset + items.length : null, items });
+      if (summaryDelayMs) setTimeout(() => res.end(result), summaryDelayMs);
+      else res.end(result);
+      return;
     }
     if (pathname === '/api/v2/series') {
       const pair = { source: url.searchParams.get('source'), target: url.searchParams.get('target'), type: url.searchParams.get('type') };
@@ -178,6 +192,25 @@ const server = http.createServer((req, res) => {
     if (process.env.RUN_AXE) await page.addInitScript({ path: path.join(root, 'build/qa-deps/package/axe.min.js') });
     await page.goto(origin + '/chart-matrix-trial');
     await page.locator('.node').first().waitFor();
+    async function assertSegment(groupSelector) {
+      await page.waitForTimeout(210);
+      const geometry = await page.locator(groupSelector).evaluate(group => {
+        const active = group.querySelector('button.on'), indicator = group.querySelector('.segment-indicator');
+        const a = active.getBoundingClientRect(), b = indicator.getBoundingClientRect();
+        return { left: Math.abs(a.left - b.left), width: Math.abs(a.width - b.width),
+          selected: group.querySelectorAll('button[aria-pressed="true"]').length,
+          decorative: indicator.getAttribute('aria-hidden'),
+          duration: getComputedStyle(indicator).transitionDuration };
+      });
+      assert.ok(geometry.left < 1 && geometry.width < 1, JSON.stringify(geometry));
+      assert.equal(geometry.selected, 1);
+      assert.equal(geometry.decorative, 'true');
+      assert.match(geometry.duration, /0\.18s/);
+    }
+    assert.equal(await page.locator('.segment-indicator').count(), 3);
+    await assertSegment('#filterPills');
+    await assertSegment('#pairMode');
+    await assertSegment('#viewMode');
     assert.equal(await page.locator('.node').count(), 17);
     assert.equal(await page.locator('#chart-key').isVisible(), false);
     assert.deepEqual(requests, ['/api/nodes']);
@@ -190,6 +223,47 @@ const server = http.createServer((req, res) => {
     assert.equal(requests.filter(route => route === '/api/stats-batch.json').length, 1);
     assert.equal(requests.filter(route => route === '/api/v2/series').length, 0);
     assert.match(await page.locator('#selFreshness').textContent(), /^Updated \d\d:\d\d$/);
+    await page.waitForTimeout(270);
+    failNextStats = true; statsDelayMs = 300;
+    await page.locator('#goBtn').click();
+    await page.locator('[data-filter="ext"]').click();
+    assert.equal(await page.locator('.card').count(), 8, 'old grid remains while query is pending');
+    await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Query failed:'));
+    assert.equal(await page.locator('.card').count(), 4, 'failure applies a draft filter to preserved cards');
+    await page.locator('[data-filter="all"]').click();
+    assert.equal(await page.locator('.card').count(), 8);
+    assert.equal(await page.locator('.card').first().locator('[data-metric="0"] .stat-number').textContent(), '10.0');
+    statsEpoch = 1; statsDelayMs = 300;
+    await page.locator('#goBtn').click();
+    assert.match(await page.locator('#trialStatus').textContent(), /Loading Results/);
+    assert.equal(await page.locator('.card').count(), 8, 'pending refresh must not blank the grid');
+    await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 8 routes'));
+    await page.waitForFunction(() => document.querySelector('.card [data-metric="0"] .stat-value')?.getAnimations().length > 0);
+    const pulses = await page.evaluate(() => {
+      const cards = [...document.querySelectorAll('.card')];
+      const extCard = document.querySelector('.badge-ext')?.closest('.card');
+      return { current: cards[0].querySelector('[data-metric="0"] .stat-number').textContent,
+        loss: extCard?.querySelector('[data-metric="4"] .stat-number').textContent,
+        lossPulse: extCard?.querySelector('[data-metric="4"] .stat-value').getAnimations().length,
+        entrances: cards.filter(card => card.getAnimations().length).length };
+    });
+    assert.deepEqual([pulses.current, pulses.loss], ['11.0', '3.0']);
+    assert.ok(pulses.lossPulse > 0 && pulses.entrances > 0 && pulses.entrances <= 6, JSON.stringify(pulses));
+    statsEpoch = 0; statsDelayMs = 0;
+    statsDelayMs = 300;
+    await page.locator('#goBtn').click();
+    assert.equal(await page.evaluate(() => ChartMatrixTrial.queryLoading), true);
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      delete document.hidden;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    assert.equal(await page.evaluate(() => ChartMatrixTrial.queryLoading), false);
+    assert.equal(await page.locator('.card').count(), 8);
+    assert.match(await page.locator('#trialStatus').textContent(), /Previous results remain visible/);
+    await page.waitForTimeout(330);
+    statsDelayMs = 0;
     async function assertFiveColumnDesign() {
       const design = await page.evaluate(() => {
         const card = document.querySelector('.card'), edge = card.getBoundingClientRect();
@@ -215,18 +289,39 @@ const server = http.createServer((req, res) => {
     }
     await assertFiveColumnDesign();
     await page.locator('[data-filter="ext"]').click();
+    await page.waitForFunction(() => document.querySelector('#filterPills .segment-indicator').getAnimations().length > 0);
+    await assertSegment('#filterPills');
     assert.equal(await page.locator('.card').count(), 4);
     assert.equal(await page.locator('.card .badge-ext').count(), 4);
     await page.locator('[data-filter="v6"]').click();
+    await assertSegment('#filterPills');
     assert.equal(await page.locator('.card').count(), 4);
     await page.locator('[data-filter="all"]').click();
+    await assertSegment('#filterPills');
     assert.equal(await page.locator('.card').count(), 8);
     await page.locator('[data-mode="charts"]').click();
+    await assertSegment('#viewMode');
     assert.equal(await page.locator('#selFreshness').textContent(), 'Unapplied changes');
     assert.equal(await page.locator('.trial-plot').count(), 0);
+    summaryDelayMs = 300;
     await page.locator('#goBtn').click();
+    assert.equal(await page.evaluate(() => ChartMatrixTrial.queryLoading), true);
+    assert.equal(await page.locator('.card').count(), 8);
+    assert.equal(await page.locator('.trial-plot').count(), 0,
+      'Results cards remain intact until the Charts summary is ready');
     await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 8 routes'));
+    summaryDelayMs = 0;
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    await page.waitForFunction(() => document.querySelector('.trial-reveal'));
+    const revealGeometry = await page.locator('.trial-reveal').first().evaluate(cover => {
+      const layer = cover.parentElement;
+      return { left: parseFloat(cover.style.left), width: parseFloat(cover.style.width),
+        height: parseFloat(cover.style.height), layerWidth: layer.clientWidth,
+        duration: cover.getAnimations()[0]?.effect.getTiming().duration };
+    });
+    assert.ok(revealGeometry.left > 0 && revealGeometry.width < revealGeometry.layerWidth &&
+      revealGeometry.height < 220 && revealGeometry.duration === 220, JSON.stringify(revealGeometry));
+    await page.locator('.trial-reveal').first().waitFor({ state: 'detached' });
     assert.equal(await page.locator('#chart-key').isVisible(), true);
     assert.equal(await page.locator('.trial-plot').count(), 8);
     assert.equal(await page.locator('.card .badge-ext').count(), 4);
@@ -302,7 +397,24 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
     await page.locator('#unifiedAxisToggle').uncheck();
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    summaryDelayMs = 300;
+    await page.locator('#goBtn').click();
+    assert.equal(await page.evaluate(() => ChartMatrixTrial.queryLoading), true);
+    assert.ok(await page.locator('.trial-plot .uplot').count() > 0,
+      'old charts stay visible while a new summary is pending');
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      delete document.hidden;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await page.waitForFunction(() => !ChartMatrixTrial.queryLoading && ChartMatrixTrial.instanceCount > 0);
+    assert.equal(await page.locator('.card').count(), 8);
+    assert.match(await page.locator('#trialStatus').textContent(), /Previous results remain visible/);
+    await page.waitForTimeout(330);
+    summaryDelayMs = 0;
     await page.locator('[data-pair-mode="fixed"]').click();
+    await assertSegment('#pairMode');
     for (const id of ['v0', 'v1'])
       await page.locator('.node[data-node-id="' + id + '"] .node-anchor').click();
     assert.match(await page.locator('#selSummary').textContent(), /3 nodes.*2 fixed.*4 results/);
@@ -422,6 +534,26 @@ const server = http.createServer((req, res) => {
       <= ChartMatrixTrial.instanceCount * 1280 * 220 * 4));
     assert.deepEqual(mobileErrors, []);
     await mobile.close();
+    const reduced = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+    const reducedErrors = [];
+    reduced.on('pageerror', error => reducedErrors.push(error.message));
+    await reduced.goto(origin + '/chart-matrix-trial');
+    await reduced.locator('.node').first().waitFor();
+    for (const id of ['v0', 'ext'])
+      await reduced.locator('.node[data-node-id="' + id + '"] .node-select').click();
+    await reduced.locator('[data-mode="charts"]').click();
+    await reduced.locator('#goBtn').click();
+    await reduced.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    await reduced.locator('[data-filter="v4"]').click();
+    const reducedState = await reduced.evaluate(() => ({
+      reveal: document.querySelectorAll('.trial-reveal').length,
+      cards: [...document.querySelectorAll('.card')].filter(card => card.getAnimations().length).length,
+      indicator: document.querySelector('#filterPills .segment-indicator').getAnimations().length,
+      transition: getComputedStyle(document.querySelector('#filterPills .segment-indicator')).transitionDuration
+    }));
+    assert.deepEqual(reducedState, { reveal: 0, cards: 0, indicator: 0, transition: '0s' });
+    assert.deepEqual(reducedErrors, []);
+    await reduced.close();
     assert.equal(requests.includes('/api/graph.png'), false);
     console.log(JSON.stringify({ routes: 480, summaryPages: 15,
       seriesRequests: requests.filter(route => route === '/api/v2/series').length,

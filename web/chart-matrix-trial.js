@@ -14,10 +14,13 @@ const ChartMatrixTrial = (() => {
   let nodes = [], pairs = [], items = [], matrix = null, controller = null, generation = 0, frame = 0, observer;
   let draftMode = 'stats', appliedMode = 'stats', pairMode = 'all', appliedPairMode = 'all';
   let draftDur = 10800, appliedDur = 10800, filter = 'all', unified = false, visibleMax = 1;
+  let renderedFilter = 'all';
   let appliedSelection = [], appliedFixed = [];
   let cards = [], active = new Map(), pending = new Map(), near = new Set(), wanted = new Set();
   let seriesCache = new Map(), cacheBytes = 0;
   let chartGridColor = null;
+  let motionFrame = 0, queryLoading = false, lastMetrics = new Map();
+  const motionAnimations = new Set(), revealedRoutes = new Set();
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[char]));
@@ -39,6 +42,82 @@ const ChartMatrixTrial = (() => {
   const timestamp = stamp => new Date(stamp * 1000).toLocaleString('en-GB', {
     timeZone: 'Asia/Shanghai', hour12: false
   });
+  function motionSettings() {
+    const style = getComputedStyle(document.body);
+    return { ease: style.getPropertyValue('--trial-motion-ease').trim(),
+      enter: parseFloat(style.getPropertyValue('--trial-motion-enter')),
+      pulse: parseFloat(style.getPropertyValue('--trial-motion-pulse')),
+      reveal: parseFloat(style.getPropertyValue('--trial-motion-reveal')) };
+  }
+  function trackMotion(element, keyframes, options) {
+    const animation = element.animate(keyframes, options);
+    motionAnimations.add(animation);
+    const done = () => motionAnimations.delete(animation);
+    animation.addEventListener('finish', done, { once: true });
+    animation.addEventListener('cancel', done, { once: true });
+    return animation;
+  }
+  function stopMotion() {
+    cancelAnimationFrame(motionFrame); motionFrame = 0;
+    for (const animation of motionAnimations) animation.cancel();
+    motionAnimations.clear();
+  }
+  function syncSegment(group) {
+    const button = group.querySelector('button.on'), indicator = group.querySelector('.segment-indicator');
+    if (!button || !indicator || !button.offsetWidth) return;
+    indicator.style.width = button.offsetWidth + 'px';
+    indicator.style.transform = 'translateX(' + button.offsetLeft + 'px)';
+    if (!group.dataset.motionReady) {
+      group.dataset.motionReady = 'pending';
+      requestAnimationFrame(() => { group.dataset.motionReady = 'true'; });
+    }
+  }
+  function visibleCards() {
+    const main = $('mainArea'), bounds = main.getBoundingClientRect(), found = new Set();
+    const xs = [bounds.left + bounds.width * .25, bounds.left + bounds.width * .75];
+    for (let y = bounds.top + 24; y < bounds.bottom - 12 && found.size < 6; y += 85) {
+      for (const x of xs) {
+        const card = document.elementFromPoint(x, y)?.closest('.card');
+        if (card && $('graphGrid').contains(card)) found.add(card);
+      }
+    }
+    return [...found];
+  }
+  function animateVisibleCards(enter, pulseByIndex) {
+    if (UIComponents.reducedMotion() || (!enter && !pulseByIndex.size)) return;
+    motionFrame = requestAnimationFrame(() => {
+      motionFrame = 0;
+      if (document.hidden || $('mainArea').inert) return;
+      const settings = motionSettings();
+      visibleCards().forEach((card, order) => {
+        if (enter) trackMotion(card,
+          [{ opacity: .82, transform: 'translateY(4px)' }, { opacity: 1, transform: 'translateY(0)' }],
+          { duration: settings.enter, delay: order * 14, easing: settings.ease, fill: 'backwards' });
+        const changed = pulseByIndex.get(Number(card.dataset.index));
+        if (changed?.current) trackMotion(card.querySelector('[data-metric="0"] .stat-value'),
+          [{ backgroundColor: 'rgba(255,255,255,.09)' }, { backgroundColor: 'rgba(255,255,255,0)' }],
+          { duration: settings.pulse, easing: settings.ease });
+        if (changed?.loss) trackMotion(card.querySelector('[data-metric="4"] .stat-value'),
+          [{ backgroundColor: 'rgba(239,68,68,.18)' }, { backgroundColor: 'rgba(239,68,68,0)' }],
+          { duration: settings.pulse, easing: settings.ease });
+      });
+    });
+  }
+  function revealPlot(chart, index) {
+    if (revealedRoutes.has(index) || UIComponents.reducedMotion() || document.hidden) return;
+    revealedRoutes.add(index);
+    const layer = chart.root.querySelector('.u-wrap'), ratio = uPlot.pxRatio || window.devicePixelRatio || 1;
+    if (!layer) return;
+    const cover = document.createElement('div'); cover.className = 'trial-reveal';
+    for (const [side, value] of Object.entries({ left: chart.bbox.left, top: chart.bbox.top,
+      width: chart.bbox.width, height: chart.bbox.height })) cover.style[side] = value / ratio + 'px';
+    layer.append(cover);
+    const animation = trackMotion(cover, [{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }],
+      { duration: motionSettings().reveal, easing: 'linear', fill: 'forwards' });
+    const remove = () => cover.remove();
+    animation.addEventListener('finish', remove, { once: true });
+    animation.addEventListener('cancel', remove, { once: true });
+  }
 
   async function json(url, signal) {
     const request = new AbortController();
@@ -62,11 +141,15 @@ const ChartMatrixTrial = (() => {
   }
 
   function dispose(index) {
+    cards[index]?.querySelectorAll('.trial-reveal').forEach(cover => {
+      cover.getAnimations().forEach(animation => animation.cancel());
+    });
     active.get(index)?.destroy();
     active.delete(index);
     cards[index]?.querySelector('.trial-plot')?.replaceChildren();
   }
   function clearWork() {
+    stopMotion(); revealedRoutes.clear();
     controller?.abort();
     for (const item of pending.values()) item.abort();
     pending.clear();
@@ -216,6 +299,7 @@ const ChartMatrixTrial = (() => {
       c.loss_max_pct.map(value => value > 0 ? value : null)], plot);
     chart.root.setAttribute('aria-hidden', 'true');
     active.set(index, chart);
+    revealPlot(chart, index);
   }
   async function loadVisible(index) {
     if (active.has(index) || pending.has(index) || matrix?.items[index].error || !matrix) return;
@@ -250,6 +334,7 @@ const ChartMatrixTrial = (() => {
     }
   }
   function scheduleVisible() {
+    if (queryLoading) return;
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
       frame = 0;
@@ -346,6 +431,7 @@ const ChartMatrixTrial = (() => {
       const on = button.dataset.mode === draftMode;
       button.classList.toggle('on', on); button.setAttribute('aria-pressed', String(on));
     });
+    syncSegment($('pairMode')); syncSegment($('viewMode'));
     const axis = document.querySelector('.axis-option'), axisHidden = draftMode !== 'charts';
     axis.classList.toggle('is-hidden', axisHidden);
     axis.inert = axisHidden; axis.setAttribute('aria-hidden', String(axisHidden));
@@ -426,16 +512,19 @@ const ChartMatrixTrial = (() => {
       min_ms: item.summary.min_median_ms, max_ms: item.summary.max_median_ms,
       loss_pct: item.summary.loss_pct };
   }
-  function renderCards() {
+  function renderCards({ enter = false, pulse = false } = {}) {
+    stopMotion();
     for (const index of [...active.keys()]) dispose(index);
     for (const item of pending.values()) item.abort();
     pending.clear(); observer?.disconnect(); near.clear(); wanted.clear();
+    cancelAnimationFrame(frame); frame = 0;
     const grid = $('graphGrid');
     grid.classList.toggle('stats-only', appliedMode === 'stats');
     const list = orderedIndexes(pairs.map((pair, index) => matches(pair) ? index : -1).filter(index => index >= 0));
     visibleMax = Math.max(1, ...list.map(index => items[index]?.summary?.max_median_ms || 0)) * 1.1;
     const previous = cards;
     const palette = lossPalette();
+    const pulseByIndex = new Map();
     cards = [];
     const fragment = document.createDocumentFragment();
     for (const index of list) {
@@ -457,6 +546,11 @@ const ChartMatrixTrial = (() => {
           '</div>';
         const stats = statsFor(index);
         UIComponents.updateStats(card.querySelector('.stats'), stats);
+        const before = pulse && lastMetrics.get(identity(pair) + '|' + appliedMode);
+        if (before && stats) pulseByIndex.set(index, {
+          current: Number.isFinite(stats.current_ms) && stats.current_ms !== before.current_ms,
+          loss: Number.isFinite(stats.loss_pct) && stats.loss_pct > 0 && stats.loss_pct !== before.loss_pct
+        });
         const loss = stats?.loss_pct;
         const lossItem = card.querySelector('[data-metric="4"]');
         if (lossItem) lossItem.style.setProperty('--trial-loss-current', lossColor(loss, palette) || 'var(--text-sec)');
@@ -474,10 +568,12 @@ const ChartMatrixTrial = (() => {
       fragment.append(empty);
     }
     grid.replaceChildren(fragment);
+    renderedFilter = filter;
     $('emptyState').hidden = true;
     $('chart-key').hidden = appliedMode !== 'charts' || !list.length;
     if (appliedMode === 'charts') observe();
     updateFreshness();
+    animateVisibleCards(enter, pulseByIndex);
   }
   async function loadResults(selection, fixedIds, dur, signal) {
     const params = new URLSearchParams({ nodes: selection.join(','), anchor: fixedIds.join(',') });
@@ -494,13 +590,15 @@ const ChartMatrixTrial = (() => {
   }
   async function submit() {
     if ($('goBtn').disabled) return;
-    clearWork();
-    appliedSelection = []; appliedFixed = [];
+    // Keep the previous matrix visible while the next query is in flight.
+    controller?.abort();
+    for (const item of pending.values()) item.abort();
+    pending.clear(); observer?.disconnect(); near.clear(); wanted.clear();
+    queryLoading = true;
     controller = new AbortController();
     const token = ++generation, selection = chosen(), fixedIds = anchors(selection);
     const mode = draftMode, dur = draftDur, pairing = pairMode;
     status(mode === 'charts' ? 'Building frozen summary…' : 'Loading Results…');
-    $('emptyState').hidden = false;
     updateControls();
     try {
       const loaded = mode === 'charts'
@@ -508,10 +606,14 @@ const ChartMatrixTrial = (() => {
           (done, total) => { if (token === generation) status('Summaries ' + done + '/' + total + '; charts wait for all pages.'); })
         : await loadResults(selection, fixedIds, dur, controller.signal);
       if (token !== generation) return;
+      clearWork(); queryLoading = false;
       pairs = loaded.pairs; items = loaded.items;
       appliedSelection = selection; appliedFixed = fixedIds; appliedPairMode = pairing;
       appliedMode = mode; appliedDur = dur; matrix = mode === 'charts' ? loaded : null;
-      renderCards(); updateControls();
+      renderCards({ enter: true, pulse: true });
+      lastMetrics = new Map(pairs.map((pair, index) =>
+        [identity(pair) + '|' + appliedMode, statsFor(index)]));
+      updateControls();
       const scope = mode === 'charts'
         ? 'Frozen window ' + timestamp(loaded.end - dur) + ' – ' + timestamp(loaded.end) + ' UTC+08:00.'
         : 'Live statistics from the production Results API.';
@@ -519,7 +621,13 @@ const ChartMatrixTrial = (() => {
         (mode === 'charts' ? ' At most 4 visible charts and 2 series requests.' : ''));
       sidebarUI.closeMobile();
     } catch (error) {
-      if (token === generation && error.name !== 'AbortError') status('Query failed: ' + error.message);
+      if (token === generation) {
+        queryLoading = false;
+        if (error.name !== 'AbortError') status('Query failed: ' + error.message +
+          (pairs.length ? ' Previous results remain visible.' : ''));
+        if (pairs.length && renderedFilter !== filter) renderCards();
+        else if (matrix) observe();
+      }
     }
   }
   const sidebarUI = UIComponents.sidebarController();
@@ -554,9 +662,11 @@ const ChartMatrixTrial = (() => {
     if (!value) return;
     filter = value;
     document.querySelectorAll('[data-filter]').forEach(button => {
-      button.classList.toggle('on', button.dataset.filter === filter);
+      const on = button.dataset.filter === filter;
+      button.classList.toggle('on', on); button.setAttribute('aria-pressed', String(on));
     });
-    if (pairs.length) renderCards();
+    syncSegment($('filterPills'));
+    if (pairs.length && !queryLoading) renderCards({ enter: true });
     else updateFreshness();
   });
   $('unifiedAxisToggle').addEventListener('change', () => {
@@ -569,21 +679,26 @@ const ChartMatrixTrial = (() => {
   $('goBtn').addEventListener('click', submit);
   $('mainArea').addEventListener('scroll', scheduleVisible, { passive: true });
   const resize = new ResizeObserver(() => {
-    if (!matrix || !active.size) return;
+    if (queryLoading || !matrix || !active.size) return;
     for (const index of [...active.keys()]) dispose(index);
     scheduleVisible();
   });
   resize.observe($('mainArea'));
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-      controller?.abort(); generation++;
+      if (queryLoading) status('Query paused while hidden. Previous results remain visible; submit again.');
+      controller?.abort(); generation++; queryLoading = false;
       for (const item of pending.values()) item.abort();
       for (const index of [...active.keys()]) dispose(index);
+      if (pairs.length && renderedFilter !== filter) renderCards();
       if (!matrix && !pairs.length) status('Paused while hidden. Submit again to load measurements.');
-    } else scheduleVisible();
+    } else if (matrix) observe();
   });
   window.addEventListener('pagehide', () => {
-    controller?.abort(); for (const item of pending.values()) item.abort();
+    stopMotion();
+    queryLoading = false;
+    controller?.abort(); generation++;
+    for (const item of pending.values()) item.abort();
     for (const index of [...active.keys()]) dispose(index);
     observer?.disconnect(); near.clear(); wanted.clear(); cancelAnimationFrame(frame);
   });
@@ -593,7 +708,15 @@ const ChartMatrixTrial = (() => {
     setTimeout(tick, 30000);
   };
   tick();
+  for (const group of [$('filterPills'), $('pairMode'), $('viewMode')]) {
+    const indicator = document.createElement('span');
+    indicator.className = 'segment-indicator'; indicator.setAttribute('aria-hidden', 'true');
+    group.prepend(indicator);
+  }
+  const segmentResize = new ResizeObserver(entries => entries.forEach(entry => syncSegment(entry.target)));
+  for (const group of [$('filterPills'), $('pairMode'), $('viewMode')]) segmentResize.observe(group);
   updateControls();
+  syncSegment($('filterPills'));
   json('/api/nodes').then(data => {
     if (!Array.isArray(data)) throw new Error('Invalid node list');
     nodes = [...data].sort((a, b) => collator.compare(a.label, b.label));
@@ -604,6 +727,7 @@ const ChartMatrixTrial = (() => {
   });
   return { get instanceCount() { return active.size; }, get cacheCount() { return seriesCache.size; },
     get cacheBytes() { return cacheBytes; }, get pendingCount() { return pending.size; },
+    get queryLoading() { return queryLoading; },
     get matrix() { return matrix; }, get mode() { return appliedMode; }, get pairs() { return pairs; },
     get gridColor() { return chartGridColor; } };
 })();

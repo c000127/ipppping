@@ -144,7 +144,7 @@ const ChartMatrixTrial = (() => {
     if (!c.end.length) { plot.textContent = 'No consolidated intervals in this window.'; return; }
     const theme = getComputedStyle(document.body);
     const color = name => theme.getPropertyValue(name).trim();
-    const palette = lossPalette();
+    const markColor = color('--trial-loss-mark');
     chartGridColor = color('--trial-rule');
     const font = '11px ' + color('--font-ui');
     const maximum = unified ? visibleMax : Math.max(1, item.summary.max_median_ms || 0) * 1.1;
@@ -154,26 +154,35 @@ const ChartMatrixTrial = (() => {
       const ctx = u.ctx, px = uPlot.pxRatio || window.devicePixelRatio || 1;
       ctx.save(); ctx.beginPath(); ctx.rect(u.bbox.left, u.bbox.top, u.bbox.width, u.bbox.height); ctx.clip();
       const top = Math.floor(u.bbox.top), bottom = Math.ceil(u.bbox.top + u.bbox.height);
-      const gradient = ctx.createLinearGradient(0, bottom, 0, top);
-      gradient.addColorStop(0, palette[0]);
-      gradient.addColorStop(.5, palette[1]);
-      gradient.addColorStop(1, palette[2]);
-      ctx.fillStyle = gradient;
+      const entirelyLost = i => c.loss_max_pct[i] === 100 && c.loss_mean_pct[i] === 100 &&
+        c.count[i] > 0 && c.full_loss_count[i] === c.count[i];
+      ctx.fillStyle = markColor;
+      ctx.globalAlpha = .5;
+      // Merge adjacent complete-loss bins so a 100% outage across the window
+      // becomes one seamless rectangle spanning the entire plotted timeline.
+      let runStart = null, runEnd = null;
+      const fillRun = () => {
+        if (runStart === null) return;
+        const left = Math.floor(u.valToPos(runStart, 'x', true));
+        const right = Math.ceil(u.valToPos(runEnd, 'x', true));
+        ctx.fillRect(left, top, right - left, bottom - top);
+      };
+      for (let i = 0; i < c.end.length; i++) {
+        if (!entirelyLost(i)) { fillRun(); runStart = runEnd = null; continue; }
+        if (runStart !== null && c.start[i] !== runEnd) {
+          fillRun(); runStart = null;
+        }
+        if (runStart === null) runStart = c.start[i];
+        runEnd = c.end[i];
+      }
+      fillRun();
+      ctx.globalAlpha = .8;
       for (let i = 0; i < c.end.length; i++) {
         const loss = c.loss_max_pct[i];
-        if (!Number.isFinite(loss) || loss <= 0) continue;
+        if (!Number.isFinite(loss) || loss <= 0 || entirelyLost(i)) continue;
         const x = u.valToPos((c.start[i] + c.end[i]) / 2, 'x', true);
         if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) continue;
         const y = loss >= 100 ? top : Math.max(top, Math.min(bottom - 1, Math.floor(u.valToPos(loss, 'loss', true))));
-        // Only a bin whose every consolidated bucket is fully lost may fill
-        // its whole time span; a 100% peak inside a mixed bin stays a thin bar.
-        if (loss === 100 && c.loss_mean_pct[i] === 100 &&
-            c.count[i] > 0 && c.full_loss_count[i] === c.count[i]) {
-          const left = u.valToPos(c.start[i], 'x', true), right = u.valToPos(c.end[i], 'x', true);
-          ctx.globalAlpha = .3;
-          ctx.fillRect(Math.floor(left), top, Math.ceil(right) - Math.floor(left), bottom - top);
-        }
-        ctx.globalAlpha = loss >= 100 ? .9 : .7;
         ctx.fillRect(Math.floor(x - 2 * px), y, Math.ceil(4 * px), bottom - y);
       }
       ctx.restore();
@@ -184,13 +193,13 @@ const ChartMatrixTrial = (() => {
       scales: { x: { time: false, range: () => [matrix.end - matrix.dur, matrix.end] },
         y: { range: () => [0, maximum] }, loss: { range: () => [0, 100] } },
       series: [{}, { label: 'Mean median ms', stroke: color('--trial-rtt'), width: 2, spanGaps: false, points: { show: false } },
-        { label: 'Max loss %', scale: 'loss', stroke: palette[1], paths: () => null, points: { show: false } }],
+        { label: 'Max loss %', scale: 'loss', stroke: markColor, paths: () => null, points: { show: false } }],
       axes: [{ ...axis, size: 28, space: 76, grid: { show: false },
         values: (u, ticks) => ticks.map(t => new Date(t * 1000).toLocaleTimeString('en-GB', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false })) },
         { ...axis, size: 48, labelSize: 18, label: 'RTT ms', labelFont: font,
           grid: { stroke: chartGridColor, width: 1 } },
         { ...axis, scale: 'loss', side: 1, size: 34, labelSize: 18, label: 'Loss %',
-          labelFont: font, stroke: palette[1], grid: { show: false } }],
+          labelFont: font, stroke: markColor, grid: { show: false } }],
       hooks: { draw: [marks] }
     }, [c.end.map((stamp, i) => (c.start[i] + stamp) / 2), c.median_mean_ms,
       c.loss_max_pct.map(value => value > 0 ? value : null)], plot);

@@ -52,12 +52,14 @@ function pairs(query) {
 }
 function summary(pair, end, dur, maximum) {
   const visualCase = pair.source === 'v0' && pair.target === 'ext' && pair.type === 'v4';
+  const allLoss = pair.source === 'v0' && pair.target === 'ext' && pair.type === 'v6';
   return { source: pair.source, target: pair.target, protocol: pair.type,
     schema: 'ipppping.series.v2', snapshot_id: 'a'.repeat(24), window: { start: end - dur, end },
-    current: { current_ms: visualCase ? 8 : 10, measurement_updated_at: end - 60 },
-    summary: { average_ms: visualCase ? 7.25 : 10,
-      min_median_ms: visualCase ? 3.3 : 10,
-      max_median_ms: maximum, loss_pct: visualCase ? 12.5 : 0, measurement_coverage: 1 } };
+    current: { current_ms: allLoss ? null : visualCase ? 8 : 10, measurement_updated_at: end - 60 },
+    summary: { average_ms: allLoss ? null : visualCase ? 7.25 : 10,
+      min_median_ms: allLoss ? null : visualCase ? 3.3 : 10,
+      max_median_ms: allLoss ? null : maximum,
+      loss_pct: allLoss ? 100 : visualCase ? 12.5 : 0, measurement_coverage: 1 } };
 }
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://local'), pathname = url.pathname;
@@ -108,6 +110,17 @@ const server = http.createServer((req, res) => {
           missing_latency_count: median.map(value => Number(value === null)),
           missing_measurement_count: median.map(() => 0)
         };
+      } else if (pair.source === 'v0' && pair.target === 'ext' && pair.type === 'v6') {
+        const bins = Array.from({ length: 10 }, (_, i) => i);
+        data.columns = {
+          start: bins.map(i => start + i * dur / bins.length),
+          end: bins.map(i => start + (i + 1) * dur / bins.length),
+          count: bins.map(() => 1), median_mean_ms: bins.map(() => null),
+          min_median_ms: bins.map(() => null), max_median_ms: bins.map(() => null),
+          loss_mean_pct: bins.map(() => 100), loss_max_pct: bins.map(() => 100),
+          loss_event_count: bins.map(() => 1), full_loss_count: bins.map(() => 1),
+          missing_latency_count: bins.map(() => 1), missing_measurement_count: bins.map(() => 0)
+        };
       } else data.columns = { start: [start, start + dur / 2], end: [start + dur / 2, end],
         count: [1, 1], median_mean_ms: [10, 10], min_median_ms: [10, 10], max_median_ms: [10, 10],
         loss_mean_pct: [0, 0], loss_max_pct: [0, 0], loss_event_count: [0, 0],
@@ -138,13 +151,26 @@ const server = http.createServer((req, res) => {
     await page.addInitScript(() => {
       window.__lossDraws = [];
       window.__captureLossDraws = true;
-      const original = CanvasRenderingContext2D.prototype.fillRect;
-      CanvasRenderingContext2D.prototype.fillRect = function(x, y, width, height) {
-        if (window.__captureLossDraws && this.fillStyle instanceof CanvasGradient)
-          window.__lossDraws.push({ x, y, width, height, alpha: this.globalAlpha });
-        return original.call(this, x, y, width, height);
+      const prototype = CanvasRenderingContext2D.prototype;
+      const original = { rect: prototype.rect, clip: prototype.clip, fillRect: prototype.fillRect };
+      prototype.rect = function(x, y, width, height) {
+        if (window.__captureLossDraws) this.__lastTestRect = { x, y, width, height };
+        return original.rect.call(this, x, y, width, height);
       };
-      window.__restoreLossDraws = () => { CanvasRenderingContext2D.prototype.fillRect = original; };
+      prototype.clip = function(...args) {
+        if (window.__captureLossDraws) this.__lastTestClip = this.__lastTestRect;
+        return original.clip.apply(this, args);
+      };
+      prototype.fillRect = function(x, y, width, height) {
+        if (window.__captureLossDraws && this.fillStyle === '#f49b81')
+          window.__lossDraws.push({ x, y, width, height, alpha: this.globalAlpha,
+            clip: this.__lastTestClip,
+            lossText: this.canvas.closest('.card')?.querySelector('[data-metric="4"] .stat-number')?.textContent });
+        return original.fillRect.call(this, x, y, width, height);
+      };
+      window.__restoreLossDraws = () => {
+        prototype.rect = original.rect; prototype.clip = original.clip; prototype.fillRect = original.fillRect;
+      };
     });
     if (process.env.RUN_AXE) await page.addInitScript({ path: path.join(root, 'build/qa-deps/package/axe.min.js') });
     await page.goto(origin + '/chart-matrix-trial');
@@ -208,31 +234,49 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => [...document.querySelectorAll('.card')].some(item =>
       item.querySelector('.stat-item[data-metric="4"] .stat-number')?.textContent === '12.5' &&
       item.querySelector('.trial-plot .uplot')));
+    await page.locator('.card').filter({ hasText: '100.0%' }).first().scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => [...document.querySelectorAll('.card')].some(item =>
+      item.querySelector('.stat-item[data-metric="4"] .stat-number')?.textContent === '100.0' &&
+      item.querySelector('.trial-plot .uplot')));
     const lossVisual = await page.evaluate(() => {
       const marked = [...document.querySelectorAll('.card')].find(item =>
         item.querySelector('.stat-item[data-metric="4"] .stat-number')?.textContent === '12.5');
+      const full = [...document.querySelectorAll('.card')].find(item =>
+        item.querySelector('.stat-item[data-metric="4"] .stat-number')?.textContent === '100.0');
       const zero = [...document.querySelectorAll('.card')].find(item =>
         item.querySelector('.stat-item[data-metric="4"] .stat-number')?.textContent === '0.0');
-      const draws = window.__lossDraws;
+      const draws = [...new Map(window.__lossDraws.map(mark => [JSON.stringify(mark), mark])).values()];
       window.__captureLossDraws = false;
       window.__restoreLossDraws();
       return { colored: getComputedStyle(marked.querySelector('[data-metric="4"] .stat-value')).color,
+        full: getComputedStyle(full.querySelector('[data-metric="4"] .stat-value')).color,
         zero: getComputedStyle(zero.querySelector('[data-metric="4"] .stat-value')).color,
-        draws, key: getComputedStyle(document.querySelector('.key-loss'), '::before').backgroundImage,
+        draws, key: getComputedStyle(document.querySelector('.key-loss'), '::before').backgroundColor,
+        keyImage: getComputedStyle(document.querySelector('.key-loss'), '::before').backgroundImage,
         medianBand: getComputedStyle(document.body).getPropertyValue('--trial-range-fill').trim() };
     });
     assert.equal(lossVisual.colored, 'rgb(246, 147, 14)');
+    assert.equal(lossVisual.full, 'rgb(239, 68, 68)');
     assert.equal(lossVisual.zero, 'rgb(185, 185, 185)');
-    assert.match(lossVisual.key, /linear-gradient/);
+    assert.equal(lossVisual.key, 'rgb(244, 155, 129)');
+    assert.equal(lossVisual.keyImage, 'none');
     assert.equal(lossVisual.medianBand, '');
-    const fullBands = lossVisual.draws.filter(mark => mark.alpha === .3 && mark.width > 10);
-    const fullBars = lossVisual.draws.filter(mark => mark.alpha === .9 && mark.width <= 10);
-    const partialBars = lossVisual.draws.filter(mark => mark.alpha === .7 && mark.width <= 10);
-    assert.equal(fullBands.length, 1, 'only the entirely lost interval fills its time span');
-    assert.equal(fullBars.length, 2, '100% peak and full interval both reach the top');
-    assert.equal(partialBars.length, 1, '25% loss remains a short narrow bar');
-    assert.ok(fullBars.every(mark => mark.y === fullBands[0].y && mark.height === fullBands[0].height));
-    assert.ok(partialBars[0].height < fullBands[0].height / 2);
+    const visualDraws = lossVisual.draws.filter(mark => mark.lossText === '12.5');
+    const fullDraws = lossVisual.draws.filter(mark => mark.lossText === '100.0');
+    assert.equal(visualDraws.filter(mark => mark.alpha === .5).length, 1,
+      'the single entirely lost interval fills its true time span');
+    const mixedPeak = visualDraws.find(mark => mark.alpha === .8 && mark.y <= mark.clip.y);
+    const partial = visualDraws.find(mark => mark.alpha === .8 && mark.y > mark.clip.y);
+    assert.ok(mixedPeak && partial, JSON.stringify(visualDraws));
+    assert.ok(mixedPeak.width <= 10 && mixedPeak.height >= mixedPeak.clip.height);
+    assert.ok(partial.width <= 10 && partial.height < partial.clip.height / 2);
+    assert.equal(fullDraws.length, 1, 'adjacent full-loss bins must merge into one span');
+    const span = fullDraws[0], clip = span.clip;
+    assert.ok(span.alpha === .5 && span.x <= clip.x && span.x + span.width >= clip.x + clip.width &&
+      span.y <= clip.y && span.y + span.height >= clip.y + clip.height, JSON.stringify(span));
+    fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
+    await page.locator('.card').filter({ hasText: '100.0%' }).first().screenshot({
+      path: path.join(root, 'test-results/p4-matrix-all-loss.png') });
     const graphic = page.locator('.trial-plot .uplot').first();
     await graphic.hover();
     assert.equal(await page.locator('.u-cursor-x,.u-cursor-y').count(), 0);

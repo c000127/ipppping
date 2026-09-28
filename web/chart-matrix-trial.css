@@ -15,6 +15,7 @@
   --trial-loss-low: #f59e0b;
   --trial-loss-mid: #f97316;
   --trial-loss-high: #ef4444;
+  --trial-loss-mark: #f49b81;
   --radius: 4px;
   --control-radius: 4px;
   font-variant-numeric: tabular-nums;
@@ -138,7 +139,7 @@
 .matrix-integrated-trial .key-rtt::before { width: 16px; border-top: 2px solid var(--trial-rtt); }
 .matrix-integrated-trial .key-loss::before {
   width: 3px; height: 10px;
-  background: linear-gradient(to top, var(--trial-loss-low), var(--trial-loss-mid), var(--trial-loss-high));
+  background: var(--trial-loss-mark);
 }
 .matrix-integrated-trial .trial-plot {
   width: 100%;

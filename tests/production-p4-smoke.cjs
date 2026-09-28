@@ -69,6 +69,11 @@ const expectedStylesAsset = '/static/assets/' + Object.keys(release.assets).find
     assert.deepEqual(await page.locator('.card').first().locator('.badge').allTextContents(), ['Ext', 'v4']);
     assert.deepEqual(await page.locator('#chart-key span').allTextContents(),
       ['Mean median RTT', 'Peak loss']);
+    const keyMark = await page.locator('.key-loss').evaluate(element => {
+      const style = getComputedStyle(element, '::before');
+      return { color: style.backgroundColor, image: style.backgroundImage };
+    });
+    assert.deepEqual(keyMark, { color: 'rgb(244, 155, 129)', image: 'none' });
     assert.equal(await page.locator('.u-cursor-x,.u-cursor-y').count(), 0);
     const screenshot = path.join(__dirname, '../test-results/p4-matrix-live.png');
     fs.mkdirSync(path.dirname(screenshot), { recursive: true });

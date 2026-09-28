@@ -444,3 +444,31 @@ SHA-256 均为 `a4787fb40b1e54629eab9fad7d48a37d4bfc9e2725d891331b9b8d4da87485b7
 Google DNS 双栈链路、两 Fixed 到外部节点四条链路、可见 Canvas、
 首页 Results/两张 PNG 图和 11 个指纹资源哈希，均通过。`ipppping`
 与 Caddy active，`NRestarts=0`。
+
+## 2026-09-28 丢包时间跨度全宽修正
+
+根据进一步的视觉复核，独立 `/chart-matrix-trial` 取消图内丢包竖条的
+琥珀→红渐变，统一使用珊瑚色；卡片 Loss 数值仍随百分比连续变色。
+完整 100% 丢包区间不再呈现为淡色带加中心细条，而是直接填满该时间
+区间的宽度和绘图区高度；相邻区间合并为无缝连续块。若整个查询窗口
+均有 100% 丢包测量，绘图区横向全部覆盖；未知测量区间不涂色，混合
+区间中的 100% 峰值仍只画细条。图例与 [视觉不变量](FRONTEND_DESIGN_RULES.md)
+同步修正，首页 PNG 和单链路试验页未改。
+
+本机构建与主控 staging `/root/ipppping-stage-lossspan-E3wVSGWC` 的
+manifest SHA-256 均为
+`f2666b6dd60b98a0085680e3ae4e5d1e230a3ed8c2a6bc1da836b43680ecb0fb`。
+安装器自动备份至 `/root/ipppping-backup-20260928T122816445431Z`。
+矩阵资源指纹为 `chart-matrix-trial.dc4201076df4074c.css` 与
+`chart-matrix-trial.91a9e48df44993bd.js`；矩阵页 HTML SHA-256 为
+`d10e474cd803be063b1ddb6e3f5157cfb68c304e3d487e50211dc2fc09ebfb42`。
+首页和单链路页 HTML 哈希分别保持
+`3329562ba2d07fdf1edc1b221bafc2caf84312fafa65c7719e7c384931bf2af2`、
+`0e6d099ffc5a651d1a54848a06313d5747c94faf2adedbc805fb23cf226642aa`。
+
+发布前 81 项 Python、Node 契约、主页面 Chrome 构建版、单链路试验及
+矩阵 480 路/axe 回归均通过；10 个连续完整丢包桶的模拟仅产生一个
+覆盖绘图区全宽的矩形。60 秒滚动资源计数稳定，无脚本错误，但 G4 长测
+仍未完成。发布后公网低速 Chrome 验证两条 Google DNS 双栈链路、
+多 Fixed 外部链路、固定色图例、首页两张 PNG 和全部 11 个指纹资源
+哈希均通过；`ipppping` 与 Caddy active，`NRestarts=0`。

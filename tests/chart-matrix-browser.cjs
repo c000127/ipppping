@@ -47,10 +47,12 @@ function pairs(query) {
   });
 }
 function summary(pair, end, dur, maximum) {
+  const visualCase = pair.source === 'v0' && pair.target === 'ext' && pair.type === 'v4';
   return { source: pair.source, target: pair.target, protocol: pair.type,
     schema: 'ipppping.series.v2', snapshot_id: 'a'.repeat(24), window: { start: end - dur, end },
-    current: { current_ms: 10 }, summary: { average_ms: 10, min_median_ms: 10,
-      max_median_ms: maximum, loss_pct: 0, measurement_coverage: 1 } };
+    current: { current_ms: visualCase ? 8 : 10 }, summary: { average_ms: visualCase ? 7.25 : 10,
+      min_median_ms: visualCase ? 3.3 : 10,
+      max_median_ms: maximum, loss_pct: visualCase ? 12.5 : 0, measurement_coverage: 1 } };
 }
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://local'), pathname = url.pathname;
@@ -80,7 +82,22 @@ const server = http.createServer((req, res) => {
       const data = summary(pair, end, dur, index + 10);
       const start = end - dur;
       data.encoding = 'columns-v1';
-      data.columns = { start: [start, start + dur / 2], end: [start + dur / 2, end],
+      if (pair.source === 'v0' && pair.target === 'ext' && pair.type === 'v4') {
+        const median = [4, 4.5, 5.5, 6, 7.5, 9, null, 6.5, 8.5, 8];
+        const loss = [0, 0, 0, 25, 0, 0, 100, 0, 0, 0];
+        data.columns = {
+          start: median.map((_, i) => start + i * dur / median.length),
+          end: median.map((_, i) => start + (i + 1) * dur / median.length),
+          count: median.map(() => 1), median_mean_ms: median,
+          min_median_ms: median.map(value => value === null ? null : value - 0.7),
+          max_median_ms: median.map(value => value === null ? null : value + 0.7),
+          loss_mean_pct: loss, loss_max_pct: loss,
+          loss_event_count: loss.map(value => Number(value > 0)),
+          full_loss_count: loss.map(value => Number(value === 100)),
+          missing_latency_count: median.map(value => Number(value === null)),
+          missing_measurement_count: median.map(() => 0)
+        };
+      } else data.columns = { start: [start, start + dur / 2], end: [start + dur / 2, end],
         count: [1, 1], median_mean_ms: [10, 10], min_median_ms: [10, 10], max_median_ms: [10, 10],
         loss_mean_pct: [0, 0], loss_max_pct: [0, 0], loss_event_count: [0, 0],
         full_loss_count: [0, 0], missing_latency_count: [0, 0], missing_measurement_count: [0, 0] };
@@ -108,6 +125,7 @@ const server = http.createServer((req, res) => {
     await page.goto(`http://127.0.0.1:${server.address().port}/chart-matrix-trial`);
     await page.locator('#load').waitFor({ state: 'visible' });
     await page.waitForFunction(() => !document.getElementById('load').disabled);
+    assert.equal(await page.locator('#chart-key').isVisible(), false);
     assert.equal(requests.filter(route => route !== '/api/nodes').length, 0);
     for (const id of ['v0', 'v1', 'ext']) await page.locator(`#nodes [data-id="${id}"] .choose`).click();
     for (const id of ['v0', 'v1']) await page.locator(`#nodes [data-id="${id}"] .fixed`).click();
@@ -116,6 +134,12 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.locator('.matrix-card').count(), 4);
     assert.equal(await page.locator('.matrix-card .badge').first().textContent(), 'Ext');
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    assert.deepEqual(await page.locator('#chart-key span').allTextContents(),
+      ['Mean median RTT', 'Median range', 'Peak loss']);
+    assert.ok(await page.locator('.matrix-card').first().evaluate(card =>
+      parseFloat(getComputedStyle(card.querySelector('.metric-current dd')).fontSize)
+      > parseFloat(getComputedStyle(card.querySelector('dl > div:nth-child(2) dd')).fontSize)));
+    assert.equal(await page.locator('.matrix-card').first().locator('.metric-alert dd').textContent(), '12.50%');
     assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4));
     await page.evaluate(() => {
       Object.defineProperty(document, 'hidden', { configurable: true, value: true });
@@ -141,6 +165,7 @@ const server = http.createServer((req, res) => {
     const screenshot = path.join(root, 'test-results/p4-matrix-trial.png');
     fs.mkdirSync(path.dirname(screenshot), { recursive: true });
     await page.screenshot({ path: screenshot });
+    await page.locator('.matrix-card').first().screenshot({ path: path.join(root, 'test-results/p4-matrix-card.png') });
     await page.locator('#axis').selectOption('independent');
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
     await page.locator('#axis').selectOption('unified');
@@ -165,6 +190,7 @@ const server = http.createServer((req, res) => {
     assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.cacheCount <= 8));
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.waitForTimeout(600);
+    assert.ok(await page.locator('#chart-key').evaluate(key => Math.abs(key.getBoundingClientRect().top) <= 1));
     assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.cacheCount <= 8));
     const soakSeconds = Number(process.env.SOAK_SECONDS || 0);
     const samples = [];
@@ -214,6 +240,8 @@ const server = http.createServer((req, res) => {
     for (const id of ['v0', 'ext']) await mobile.locator(`#nodes [data-id="${id}"] .choose`).click();
     await mobile.locator('#load').click();
     await mobile.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    await mobile.screenshot({ path: path.join(root, 'test-results/p4-matrix-mobile.png') });
+    await mobile.locator('.matrix-card').first().screenshot({ path: path.join(root, 'test-results/p4-matrix-card-mobile.png') });
     assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth &&
       [...document.querySelectorAll('canvas')].reduce((sum, canvas) => sum + canvas.width * canvas.height, 0)
       <= ChartMatrixTrial.instanceCount * 1280 * 220 * 4));

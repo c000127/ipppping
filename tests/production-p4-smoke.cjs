@@ -1,5 +1,7 @@
 /* Low-rate read-only opt-in P4 smoke. Run only after an authorized deployment. */
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { chromium } = require('playwright');
 const origin = process.env.IPPPPING_SITE || 'https://ipppping.hachimihaqile.top';
 const expectedAppAsset = '/static/assets/app.e036d7b6d2eaa8be.js';
@@ -43,6 +45,14 @@ const expectedAppAsset = '/static/assets/app.e036d7b6d2eaa8be.js';
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
     assert.equal(await page.locator('.matrix-card').count(), 2);
     assert.deepEqual(await page.locator('.matrix-card').first().locator('.badge').allTextContents(), ['Ext', 'v4']);
+    assert.deepEqual(await page.locator('#chart-key span').allTextContents(),
+      ['Mean median RTT', 'Median range', 'Peak loss']);
+    assert.ok(await page.locator('.matrix-card').first().evaluate(card =>
+      parseFloat(getComputedStyle(card.querySelector('.metric-current dd')).fontSize)
+      > parseFloat(getComputedStyle(card.querySelector('dl > div:nth-child(2) dd')).fontSize)));
+    const screenshot = path.join(__dirname, '../test-results/p4-matrix-live.png');
+    fs.mkdirSync(path.dirname(screenshot), { recursive: true });
+    await page.locator('.matrix-card').first().screenshot({ path: screenshot });
     await page.locator('#nodes [data-id="legendsg"] .choose').click();
     for (const id of ['akari_jp', 'legendsg']) await page.locator(`#nodes [data-id="${id}"] .fixed`).click();
     await page.locator('#load').click();

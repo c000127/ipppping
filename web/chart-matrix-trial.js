@@ -49,7 +49,7 @@ const ChartMatrixTrial = (() => {
     for (const index of [...active.keys()]) dispose(index);
     observer?.disconnect(); near.clear(); wanted.clear();
     seriesCache.clear(); cacheBytes = 0;
-    cards = []; matrix = null; $('grid').replaceChildren();
+    cards = []; matrix = null; $('grid').replaceChildren(); $('chart-key').hidden = true;
   }
   function remember(index, value) {
     const bytes = JSON.stringify(value).length * 2;
@@ -118,32 +118,48 @@ const ChartMatrixTrial = (() => {
     const item = matrix.items[index], c = data.columns;
     if (!c.end.length) { plot.textContent = 'No consolidated intervals in this window.'; return; }
     const maximum = $('axis').value === 'unified' ? matrix.unifiedMax : Math.max(1, item.summary.max_median_ms || 0) * 1.1;
-    const axis = { stroke: '#b8b8b8', font: '11px monospace', grid: { stroke: '#363636' }, ticks: { stroke: '#777' } };
-    const envelope = u => {
-      const ctx = u.ctx;
+    const axis = { stroke: '#aab5bc', font: '11px JetBrains Mono, monospace',
+      ticks: { show: false }, border: { show: false } };
+    const marks = u => {
+      const ctx = u.ctx, px = uPlot.pxRatio || window.devicePixelRatio || 1;
       ctx.save(); ctx.beginPath(); ctx.rect(u.bbox.left, u.bbox.top, u.bbox.width, u.bbox.height); ctx.clip();
-      ctx.strokeStyle = '#bba3ff'; ctx.lineWidth = Math.min(2, devicePixelRatio);
+      ctx.strokeStyle = '#b6a4dd'; ctx.lineWidth = px;
       for (let i = 0; i < c.end.length; i++) {
         if (!Number.isFinite(c.min_median_ms[i]) || !Number.isFinite(c.max_median_ms[i])) continue;
         const x = u.valToPos((c.start[i] + c.end[i]) / 2, 'x', true);
         const low = u.valToPos(c.min_median_ms[i], 'y', true), high = u.valToPos(c.max_median_ms[i], 'y', true);
         ctx.beginPath(); ctx.moveTo(x, low); ctx.lineTo(x, high);
-        ctx.moveTo(x - 2, low); ctx.lineTo(x + 2, low);
-        ctx.moveTo(x - 2, high); ctx.lineTo(x + 2, high); ctx.stroke();
+        ctx.moveTo(x - 2.5 * px, low); ctx.lineTo(x + 2.5 * px, low);
+        ctx.moveTo(x - 2.5 * px, high); ctx.lineTo(x + 2.5 * px, high); ctx.stroke();
       }
       ctx.restore();
+      for (let i = 0; i < c.end.length; i++) {
+        const loss = c.loss_max_pct[i];
+        if (!Number.isFinite(loss) || loss <= 0) continue;
+        const x = u.valToPos((c.start[i] + c.end[i]) / 2, 'x', true);
+        const y = u.valToPos(loss, 'loss', true);
+        if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) continue;
+        ctx.beginPath(); ctx.arc(x, y, 6 * px, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 155, 137, 0.24)'; ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, (loss === 100 ? 3.6 : 2.8) * px, 0, Math.PI * 2);
+        ctx.fillStyle = loss === 100 ? '#ff8277' : '#ffad91'; ctx.fill();
+        ctx.lineWidth = px; ctx.strokeStyle = '#15181b'; ctx.stroke();
+      }
     };
     plot.replaceChildren();
     const chart = new uPlot({ width, height: 220, legend: { show: false }, select: { show: false },
       cursor: { drag: { x: false, y: false }, points: { show: false } },
       scales: { x: { time: false, range: () => [matrix.end - matrix.dur, matrix.end] },
         y: { range: () => [0, maximum] }, loss: { range: () => [0, 100] } },
-      series: [{}, { label: 'Mean median ms', stroke: '#dedede', width: 1.5, spanGaps: false, points: { show: false } },
-        { label: 'Max loss %', scale: 'loss', stroke: '#ff9999', paths: () => null, points: { show: true, size: 3, fill: '#ff9999' } }],
-      axes: [{ ...axis, space: 80, values: (u, ticks) => ticks.map(t => new Date(t * 1000).toLocaleTimeString('en-GB', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false })) },
-        { ...axis, size: 55, label: 'RTT ms', labelFont: '11px monospace' },
-        { ...axis, scale: 'loss', side: 1, size: 42, label: 'Loss %', labelFont: '11px monospace', grid: { show: false } }],
-      hooks: { draw: [envelope] }
+      series: [{}, { label: 'Mean median ms', stroke: '#91dbe8', width: 2, spanGaps: false, points: { show: false } },
+        { label: 'Max loss %', scale: 'loss', stroke: '#ffad91', paths: () => null, points: { show: false } }],
+      axes: [{ ...axis, size: 28, space: 76, grid: { show: false },
+        values: (u, ticks) => ticks.map(t => new Date(t * 1000).toLocaleTimeString('en-GB', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false })) },
+        { ...axis, size: 48, labelSize: 18, label: 'RTT ms', labelFont: '11px JetBrains Mono, monospace',
+          grid: { stroke: 'rgba(191, 205, 215, 0.12)', width: 1 } },
+        { ...axis, scale: 'loss', side: 1, size: 34, labelSize: 18, label: 'Loss %',
+          labelFont: '11px JetBrains Mono, monospace', stroke: '#e9aca0', grid: { show: false } }],
+      hooks: { draw: [marks] }
     }, [c.end.map((stamp, i) => (c.start[i] + stamp) / 2), c.median_mean_ms,
       c.loss_max_pct.map(value => value > 0 ? value : null)], plot);
     chart.root.setAttribute('aria-hidden', 'true');
@@ -214,11 +230,14 @@ const ChartMatrixTrial = (() => {
     cards = matrix.pairs.map((pair, index) => {
       const item = matrix.items[index];
       const card = document.createElement('article'); card.className = 'matrix-card'; card.dataset.index = String(index);
+      const header = document.createElement('div'); header.className = 'card-head';
       const title = document.createElement('h2'); title.textContent = `${label(pair.source)} → ${label(pair.target)}`;
       const badges = document.createElement('div'); badges.className = 'badges';
       for (const text of [...(pair.ext ? ['Ext'] : []), pair.type]) {
-        const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = text; badges.append(badge);
+        const badge = document.createElement('span'); badge.className = `badge badge-${text.toLowerCase()}`;
+        badge.textContent = text; badges.append(badge);
       }
+      header.append(title, badges);
       const stats = document.createElement('dl');
       for (const [name, value] of item.error ? [['Status', item.error]] : [
         ['Current', number(item.current?.current_ms) + ' ms'],
@@ -228,13 +247,17 @@ const ChartMatrixTrial = (() => {
         ['Coverage', number(item.summary.measurement_coverage * 100) + '%']
       ]) {
         const group = document.createElement('div'), dt = document.createElement('dt'), dd = document.createElement('dd');
+        if (name === 'Current') group.className = 'metric-current';
+        if (name === 'Loss' && item.summary.loss_pct > 0) group.className = 'metric-alert';
         dt.textContent = name; dd.textContent = value; group.append(dt, dd); stats.append(group);
       }
+      if (item.error) card.classList.add('is-error');
       const plot = document.createElement('div'); plot.className = 'plot'; plot.setAttribute('aria-hidden', 'true');
       if (item.error) { plot.classList.add('problem'); plot.textContent = `No chart: ${item.error}. Submit again to retry.`; }
-      card.append(title, badges, stats, plot); fragment.append(card); return card;
+      card.append(header, stats, plot); fragment.append(card); return card;
     });
     $('grid').replaceChildren(fragment);
+    $('chart-key').hidden = false;
     observe();
   }
   function updateButtons() {
@@ -260,7 +283,7 @@ const ChartMatrixTrial = (() => {
       matrix = loaded;
       renderCards();
       $('status').textContent = `Ready: ${loaded.pairs.length} routes. At most ${MAX_ACTIVE} charts and 2 series requests; hidden routes have no series request.`;
-      $('scope').textContent = `Frozen window ${timestamp(loaded.end - dur)} – ${timestamp(loaded.end)} UTC+08:00 · ${$('axis').value} Y axis · ${loaded.pairs.length} routes. Chart lines are consolidated-bucket medians; vertical marks show median extrema and red dots show maximum loss. Summary values remain in the document when charts are discarded.`;
+      $('scope').textContent = `Frozen window ${timestamp(loaded.end - dur)} – ${timestamp(loaded.end)} UTC+08:00 · ${$('axis').value} Y axis · ${loaded.pairs.length} routes. Only visible charts are drawn; summary values remain as you scroll.`;
     } catch (error) {
       if (token === generation) $('status').textContent = error.name === 'AbortError' ? 'Cancelled.' : `Matrix not drawn: ${error.message}`;
     }

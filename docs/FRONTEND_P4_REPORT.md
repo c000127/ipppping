@@ -35,6 +35,38 @@
 | 主控隔离真实 `rrdtool` | 480 个不同路径缓存键、15 页、960 次子进程调用；4/2/1 工作项总墙钟分别 8.72/9.32/15.56 秒，子进程峰值分别 4/2/1；2 工作项每页中位 577 ms、子进程 CPU 累计 9.48 秒、试验 API 峰值 RSS 45,284 KiB；15 页 JSON 490,268 B / gzip 16,299 B。故 P4 限为 2 工作项 | 自动删除临时目录，未读生产 RRD；480 硬链接共享同一热 inode，不能代表生产冷盘或并发用户 |
 | 公网 opt-in 小规模 | `akari_jp→google_dns` 两个协议摘要与 v4 序列一致；gzip 命中、Chrome 可见 Canvas 2；两个 Fixed VPS 到同一外部目标产生 4 个结果且同时显示 Ext 与 v4/v6；主页面资产指纹未变、API/Caddy active、NRestarts=0、新鲜度 timer 成功 | 仅 2/4 路由低速核验，不是全量生产压测；Cloudflare 会动态注入挑战脚本，故公网整页 SHA 不可与源文件直接比 |
 
+## 2026-09-28 独立试验页图表视觉精修
+
+本轮仅调整独立 `/chart-matrix-trial`，仍以既有深色界面为基底，不在
+主页面切换渲染器。设计取舍参考 [Grafana Saga 的任务优先原则](https://grafana.com/developers/saga/foundations/design-principles/)
+与 [Grafana 时序图语义](https://grafana.com/docs/grafana/latest/visualizations/panels-visualizations/visualizations/time-series/)、
+[IBM Carbon 坐标轴及缺口指引](https://carbondesignsystem.com/data-visualization/axes-and-labels/)、
+[AntV 辅助标记](https://antv.antgroup.com/zh/specification/module/annotation/)、
+[Tremor Metric Card](https://npm.tremor.so/docs/ui/card)。以下颜色和像素值是
+适配本站暗色调的实现选择，不声称为这些体系的强制色值。
+
+- 卡片、指标区和图面作三级暗色分层；`Current` 放大并独占主指标位，
+  Average / Max median / Loss / Coverage 作 2×2 次级指标。窄于 420px
+  时主指标改为整行，避免大数字挤占另外两列。
+- RTT 中位数折线为青色、区间须为淡紫色、丢包峰值为珊瑚色空隙点，
+  100% 丢包点加大实心标记。单个置顶图例说明三者，不仅靠颜色区分；
+  不在 480 张卡上重复生成图例 DOM。
+  移除垂直网格和刻度短线，只保留低对比度水平参考线；左右 Y 轴分别
+  标明 RTT ms / Loss %。保持 0–100% 丢包轴、已有统一/独立 RTT 轴、
+  冻结窗口与断点，不插值缺失测量。
+- 无新增依赖、背景动效或网络请求；逐点绘制最多 120 个箱的区间须与
+  非零丢包环形点，仍受 4 个 Canvas、2 个并发序列请求、8 项/2 MiB 缓存及
+  每图背板像素上限约束。
+- 本地 Chrome 模拟加入有起伏、25%/100% 丢包及缺口的可视样本；
+  截图保存于忽略的 `test-results/p4-matrix-card.png` 和
+  `test-results/p4-matrix-card-mobile.png`。自动 axe 未发现 WCAG 2 A/AA、
+  2.1/2.2 A/AA 违规；自动检查不能代替时序详情的人工读屏验收。
+- 最终布局在本地 Chrome 480 卡、60 秒/30 次滚动循环中，DOM 节点数
+  17,128、监听器 73、Canvas 4、背板 579,920 像素均恒定；GC 后 JS heap
+  3,332,332 → 3,492,068 B，进程私有内存 391,380,992 →
+  363,298,816 B。与旧版 16,631 DOM 节点相比，视觉增量约 497 节点；
+  这是短时模拟证据，不取代 G4 的长时与真实生产负载验收。
+
 ## G4 仍需完成
 
 1. 已完成热 inode 的隔离 `rrdtool` 基准和小规模生产路由可用性；仍需生产

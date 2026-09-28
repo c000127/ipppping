@@ -328,3 +328,31 @@ Cloudflare 会在公网 HTML 尾部动态注入挑战脚本，公网整页哈希
 若试验入口出现回归，先保留主页面 PNG 服务并停止使用该独立入口；
 需要回退时依据上述自动备份恢复对应应用文件后重启 `ipppping`，不要碰
 `config/nodes.json`、RRD 或节点密钥。尚未做破坏性回滚演练；G4/G5 未通过。
+
+## 2026-09-28 P4 独立矩阵试验页视觉精修
+
+只更新 `/chart-matrix-trial` 的 CSS/JS/HTML：三级暗色分层、Current 主指标、
+共享置顶图例、弱化网格及青色 RTT / 紫色区间 / 珊瑚色丢包点。公网主页
+仍默认 PNG，`/chart-trial` 与后端/节点采样逻辑不变；设计依据和模拟边界见
+[P4 报告](FRONTEND_P4_REPORT.md)。
+
+本机发布清单 SHA-256 为
+`36f6b9b8097929b9dc53b15ed856a77e28885b2b8060f9f32ce62a46049eb132`；
+主控 staging `/root/ipppping-stage-visual-VsPJfMRy` 的清单、矩阵 HTML、
+新 CSS/JS 与本机逐项哈希一致，服务端五个运行文件亦与已安装版本一致。
+沿用 `deploy/install-api.py` 发布，自动备份至
+`/root/ipppping-backup-20260928T085004179798Z`。矩阵页 HTML 新哈希为
+`e2435c5695e5d97a95f1f9e23ca6696858e9c02234adf83636c9681ea1d666bb`，
+指纹资源为 `chart-matrix-trial.d5b661ee68c251e7.css`、
+`chart-matrix-trial.4b51049b2ce2c168.js`。主页 HTML 仍为
+`3617d0cf04b62daf4a00fc6eca7ce454190f6ec9e04b253f18276db4932d0bdf`，
+单链路试用页仍为
+`04be375071b426c6cc9622fd5702c84cc8a790776713ed420b3e52f0b74af76b`。
+
+发布前 81 项 Python、Node 摘要契约、本地 Chrome 480 路模拟、axe 自动无障碍、
+主页面 17 组回归及旧单链路试用页回归通过；最终视觉版本 60 秒滚动中
+DOM/监听器/Canvas 上限恒定。发布后低速公网 Chrome 通过 2 路与双 Fixed 4 路
+Ext v4/v6 核验、可见 Canvas 与主指标样式检查，无脚本异常；实机截图保存于
+Git 忽略的 `test-results/p4-matrix-live.png`。主控 `ipppping`、Caddy、
+freshness timer 均 active，`/healthz` 返回 `ok`，`NRestarts=0`。
+保留旧资源与上述备份；本次视觉更新不是 G4 全矩阵生产负载通过证明。

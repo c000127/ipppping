@@ -1,4 +1,13 @@
-.matrix-trial { height: auto; overflow: auto; }
+.matrix-trial {
+  --matrix-surface: #1d2023;
+  --matrix-plot: #15181b;
+  --matrix-rule: #353b40;
+  --matrix-rtt: #91dbe8;
+  --matrix-range: #b6a4dd;
+  --matrix-loss: #ffad91;
+  height: auto;
+  overflow: auto;
+}
 .matrix-trial main { max-width: 1460px; margin: auto; padding: 20px; }
 .matrix-trial h1 { font-size: 22px; color: var(--text); }
 .matrix-trial p, .matrix-trial h1, .matrix-trial form { margin-block: 14px; }
@@ -15,18 +24,66 @@
 .trial-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
 .trial-controls label { display: flex; flex-direction: column; gap: 5px; }
 .trial-controls select { background: var(--bg-hover); color: var(--text); border: 0; border-radius: var(--control-radius); }
-.matrix-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 12px; }
-.matrix-card { min-width: 0; min-height: 335px; padding: 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); }
-.matrix-card h2 { font-size: 15px; color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
-.matrix-card .badges { display: flex; gap: 6px; margin-top: 6px; }
-.matrix-card .badge { color: var(--text); background: var(--bg-hover); border-radius: 3px; padding: 2px 6px; font-size: 12px; }
-.matrix-card dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
-.matrix-card dt { font-size: 11px; color: var(--text-sec); }
-.matrix-card dd { color: var(--text); font-size: 14px; overflow-wrap: anywhere; }
-.matrix-card .plot { height: 220px; width: 100%; margin-top: 10px; overflow: hidden; }
+.matrix-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 14px; }
+.matrix-card {
+  min-width: 0; padding: 16px; background: var(--matrix-surface);
+  border: 1px solid #31363b; border-radius: var(--radius);
+}
+.matrix-card .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; }
+.matrix-card h2 { min-width: 0; font-size: 16px; line-height: 1.4; color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
+.matrix-card .badges { display: flex; flex: none; gap: 5px; padding-top: 1px; }
+.matrix-card .badge { color: var(--text-sec); background: #303439; border-radius: 4px; padding: 2px 6px; font-size: 11px; line-height: 1.5; }
+.matrix-card .badge-v6 { color: #cfbfff; background: #332d3c; }
+.matrix-card .badge-ext { color: #d4d9dc; background: #303438; }
+.matrix-card dl {
+  display: grid; grid-template-columns: minmax(0, 1.25fr) repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 5px 10px;
+  min-height: 92px; margin-top: 14px; padding: 11px 13px;
+  background: #25292c; border-radius: 6px;
+}
+.matrix-card dl > div { min-width: 0; }
+.matrix-card dt { font-size: 11px; line-height: 1.25; letter-spacing: .035em; text-transform: uppercase; color: #adb6ba; }
+.matrix-card dd { margin-top: 3px; color: #e5e9e9; font-size: 14px; line-height: 1.25; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.matrix-card .metric-current {
+  grid-row: span 2; align-content: center; margin-right: 2px;
+  border-right: 1px solid var(--matrix-rule);
+}
+.matrix-card .metric-current dd { margin-top: 6px; color: #f1f5f5; font-size: 26px; font-weight: 600; letter-spacing: -.04em; white-space: nowrap; }
+.matrix-card .metric-alert dd { color: var(--matrix-loss); }
+.matrix-card.is-error dl { display: block; min-height: 0; }
+.matrix-key {
+  position: sticky; top: 0; z-index: 4; display: flex; flex-wrap: wrap;
+  align-items: center; gap: 7px 18px; margin-bottom: 12px; padding: 8px 12px;
+  color: #b2bdc2; background: var(--bg-panel); border: 1px solid #30363b;
+  border-radius: 6px; font-size: 11px; line-height: 1.3;
+}
+.matrix-key span { display: inline-flex; align-items: center; gap: 6px; }
+.matrix-key span::before { content: ''; display: inline-block; flex: none; }
+.matrix-key .key-rtt::before { width: 16px; border-top: 2px solid var(--matrix-rtt); }
+.matrix-key .key-range::before { width: 12px; height: 9px; border-inline: 1px solid var(--matrix-range); border-top: 1px solid var(--matrix-range); border-bottom: 1px solid var(--matrix-range); }
+.matrix-key .key-loss::before { width: 7px; height: 7px; border-radius: 50%; background: var(--matrix-loss); box-shadow: 0 0 0 3px rgba(255, 173, 145, .18); }
+.matrix-card .plot {
+  width: 100%; height: 220px; margin-top: 13px; overflow: hidden; background: var(--matrix-plot);
+  border-radius: 6px; box-shadow: inset 0 0 0 1px #2c3237;
+}
 .matrix-card .plot:empty::before { content: 'Chart loads when visible'; color: var(--text-dim); }
 .matrix-card .plot[aria-busy="true"]::before { content: 'Loading visible series…'; color: var(--text-dim); }
 .matrix-card .plot:not(:empty)::before { content: none; }
 .matrix-card .problem { color: var(--warning); }
 #status, #scope { overflow-wrap: anywhere; }
-@media (max-width: 600px) { .matrix-trial main { padding: 12px; } .matrix-card dl { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+  .matrix-trial main { padding: 12px; }
+  .matrix-card { padding: 12px; }
+  .matrix-card dl { grid-template-columns: minmax(0, 1.1fr) repeat(2, minmax(0, 1fr)); gap: 4px 6px; padding: 10px; }
+  .matrix-card dd { font-size: 12px; }
+  .matrix-card .metric-current dd { font-size: 20px; }
+  .matrix-key { gap: 6px 12px; }
+}
+@media (max-width: 420px) {
+  .matrix-card dl { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto; row-gap: 9px; }
+  .matrix-card .metric-current {
+    grid-column: 1 / -1; grid-row: auto; margin: 0; padding-bottom: 8px;
+    border-right: 0; border-bottom: 1px solid var(--matrix-rule);
+  }
+  .matrix-card .metric-current dd { font-size: 24px; }
+}

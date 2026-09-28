@@ -139,28 +139,26 @@ const ChartMatrixTrial = (() => {
     const marks = u => {
       const ctx = u.ctx, px = uPlot.pxRatio || window.devicePixelRatio || 1;
       ctx.save(); ctx.beginPath(); ctx.rect(u.bbox.left, u.bbox.top, u.bbox.width, u.bbox.height); ctx.clip();
-      ctx.strokeStyle = color('--trial-range'); ctx.lineWidth = px;
+      // A quiet interval envelope replaces per-bin whiskers/caps that resembled cursors.
+      ctx.fillStyle = color('--trial-range-fill');
       for (let i = 0; i < c.end.length; i++) {
         if (!Number.isFinite(c.min_median_ms[i]) || !Number.isFinite(c.max_median_ms[i])) continue;
-        const x = u.valToPos((c.start[i] + c.end[i]) / 2, 'x', true);
+        const left = u.valToPos(c.start[i], 'x', true), right = u.valToPos(c.end[i], 'x', true);
         const low = u.valToPos(c.min_median_ms[i], 'y', true), high = u.valToPos(c.max_median_ms[i], 'y', true);
-        ctx.beginPath(); ctx.moveTo(x, low); ctx.lineTo(x, high);
-        ctx.moveTo(x - 2.5 * px, low); ctx.lineTo(x + 2.5 * px, low);
-        ctx.moveTo(x - 2.5 * px, high); ctx.lineTo(x + 2.5 * px, high); ctx.stroke();
+        if (Math.abs(low - high) < 1.5 * px) continue;
+        ctx.fillRect(left, Math.min(low, high), Math.max(0, right - left), Math.abs(low - high));
       }
-      ctx.restore();
+      // Loss remains visible as a narrow time bar, without halos or point icons.
+      ctx.fillStyle = color('--trial-loss-fill');
       for (let i = 0; i < c.end.length; i++) {
         const loss = c.loss_max_pct[i];
         if (!Number.isFinite(loss) || loss <= 0) continue;
         const x = u.valToPos((c.start[i] + c.end[i]) / 2, 'x', true);
         const y = u.valToPos(loss, 'loss', true);
         if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) continue;
-        ctx.beginPath(); ctx.arc(x, y, 6 * px, 0, Math.PI * 2);
-        ctx.fillStyle = color('--trial-loss-halo'); ctx.fill();
-        ctx.beginPath(); ctx.arc(x, y, (loss === 100 ? 3.6 : 2.8) * px, 0, Math.PI * 2);
-        ctx.fillStyle = color('--trial-loss'); ctx.fill();
-        ctx.lineWidth = px; ctx.strokeStyle = color('--trial-plot'); ctx.stroke();
+        ctx.fillRect(x - 2 * px, y, 4 * px, u.bbox.top + u.bbox.height - y);
       }
+      ctx.restore();
     };
     plot.replaceChildren();
     const chart = new uPlot({ width, height: 220, legend: { show: false }, select: { show: false },

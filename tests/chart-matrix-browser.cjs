@@ -6,6 +6,8 @@ const http = require('node:http');
 const { execFileSync } = require('node:child_process');
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
+const trialSource = fs.readFileSync(path.join(root, 'web/chart-matrix-trial.js'), 'utf8');
+assert.doesNotMatch(trialSource, /ctx\.arc\(|ctx\.moveTo\(/, 'no per-sample cursor-like marks');
 const nodes = Array.from({ length: 16 }, (_, i) => ({ id: `v${i}`, label: `VPS ${i}`, group: 'vps', v4: true, v6: true }));
 nodes.push({ id: 'ext', label: 'External', group: 'dns', v4: true, v6: true });
 const requests = [];
@@ -147,6 +149,30 @@ const server = http.createServer((req, res) => {
     assert.equal(requests.filter(route => route === '/api/stats-batch.json').length, 1);
     assert.equal(requests.filter(route => route === '/api/v2/series').length, 0);
     assert.match(await page.locator('#selFreshness').textContent(), /^Updated \d\d:\d\d$/);
+    async function assertFiveColumnDesign() {
+      const design = await page.evaluate(() => {
+        const card = document.querySelector('.card'), edge = card.getBoundingClientRect();
+        const separator = card.querySelector('.card-right').getBoundingClientRect();
+        const metrics = [...card.querySelectorAll('.stat-item')].map(item => {
+          const cell = item.getBoundingClientRect();
+          const label = item.querySelector('.stat-label').getBoundingClientRect();
+          const value = item.querySelector('.stat-value').getBoundingClientRect();
+          const left = Math.min(label.left, value.left), right = Math.max(label.right, value.right);
+          return { aligned: Math.abs(label.left - value.left) < 1,
+            centered: Math.abs((left + right - cell.left - cell.right) / 2) < 2 };
+        });
+        return { cardBorder: getComputedStyle(card).borderTopWidth,
+          controlsBorder: getComputedStyle(document.querySelector('.pills')).borderTopWidth,
+          badgeBorder: getComputedStyle(card.querySelector('.badge')).borderTopWidth,
+          keyBorder: getComputedStyle(document.querySelector('.matrix-key')).borderTopWidth,
+          lineLeft: Math.abs(separator.left - edge.left), lineRight: Math.abs(separator.right - edge.right), metrics };
+      });
+      assert.deepEqual([design.cardBorder, design.controlsBorder, design.badgeBorder, design.keyBorder],
+        ['0px', '0px', '0px', '0px']);
+      assert.ok(design.lineLeft < 1 && design.lineRight < 1, JSON.stringify(design));
+      assert.ok(design.metrics.every(metric => metric.aligned && metric.centered), JSON.stringify(design));
+    }
+    await assertFiveColumnDesign();
     await page.locator('[data-filter="ext"]').click();
     assert.equal(await page.locator('.card').count(), 4);
     assert.equal(await page.locator('.card .badge-ext').count(), 4);
@@ -163,6 +189,7 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.locator('#chart-key').isVisible(), true);
     assert.equal(await page.locator('.trial-plot').count(), 8);
     assert.equal(await page.locator('.card .badge-ext').count(), 4);
+    await assertFiveColumnDesign();
     const graphic = page.locator('.trial-plot .uplot').first();
     await graphic.hover();
     assert.equal(await page.locator('.u-cursor-x,.u-cursor-y').count(), 0);
@@ -199,10 +226,11 @@ const server = http.createServer((req, res) => {
       })).violations.map(value => ({ id: value.id, targets: value.nodes.map(node => node.target) })));
       assert.deepEqual(violations, []);
     }
-    for (const width of [390, 720, 1440]) {
+    for (const width of [390, 720, 1440, 1800]) {
       await page.setViewportSize({ width, height: 900 });
       await page.waitForTimeout(260);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      if (width === 1800) await assertFiveColumnDesign();
     }
     await page.evaluate(() => { document.body.style.zoom = '2'; });
     await page.waitForTimeout(300);

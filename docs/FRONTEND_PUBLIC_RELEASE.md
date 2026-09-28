@@ -386,3 +386,34 @@ DOM 节点仍须 G4 长测。发布后公网 Chrome 低速核验：
 Google DNS 的 4 条 Ext v4/v6 链路及可见 Canvas 均正常；主页面应用
 指纹仍为 `app.e036d7b6d2eaa8be.js`，无脚本异常。`ipppping`、Caddy
 均 active 且 `NRestarts=0`；未触碰节点列表、RRD 和采样服务。
+
+## 2026-09-28 无边框与五列指标对齐修正
+
+根据公网站点复核，恢复无常驻外框风格，保留指标内部分隔以及链路/指标/
+图表之间的结构线；堆叠卡的链路/指标横线延伸到卡片两侧。主页面与试验页
+共用的五列指标规则调整为标签/数值左对齐、整组居中，宽/窄 2×2 规则不变。
+独立矩阵试验页的逐点须线及丢包圆环改为淡色区间带和细丢包竖条。
+严格规则和回归断言见 [前端视觉不变量](FRONTEND_DESIGN_RULES.md)。
+
+发布清单 SHA-256 为
+`f4fc6f19bde25b04ea02f1e311eb9b0ab9228acdb9d0e0952a68ebd2eb11464a`；
+主控 staging `/root/ipppping-stage-alignment-sikvBv` 的清单、主页面及
+矩阵页 HTML 与本机构建逐项哈希相同。安装器自动备份于
+`/root/ipppping-backup-20260928T113429865830Z`。新的共享样式为
+`styles.d41cde42f0aa8bf5.css`，矩阵试验页资源为
+`chart-matrix-trial.cb0b94f5373516e5.css` 和
+`chart-matrix-trial.6a57bc7b53cd28d9.js`；应用脚本指纹
+`app.e036d7b6d2eaa8be.js` 未变。主页面 HTML SHA-256 为
+`3329562ba2d07fdf1edc1b221bafc2caf84312fafa65c7719e7c384931bf2af2`，
+单链路试验页为 `0e6d099ffc5a651d1a54848a06313d5747c94faf2adedbc805fb23cf226642aa`，
+矩阵试验页为 `7fbc38944aa9b309f37b34467fe68c692b8ee345ad1831e7bae9de08441f0972`。
+后两页 HTML 哈希变化包含共享 CSS 指纹更新；单链路 JS/CSS 与主站 JS
+逻辑未变，主页 Charts 仍默认 PNG。
+
+发布前 81 项 Python、主页面源码及指纹构建的 Chrome 回归、独立矩阵
+480 条模拟链路/axe、单链路试验回归均通过。新矩阵视觉版 60 秒/30 次
+滚动中 DOM 29,850、监听器 55、Canvas 4 数量恒定。发布后低速公网
+Chrome 对主页面两条 Results、两张 PNG 图、五列对齐/全宽分隔线和全部
+11 个指纹资产哈希均通过；矩阵试验页两条 Google DNS 双栈及两个 Fixed
+VPS 的 4 条链路可见 Canvas、无边框和对齐断言通过。页面无脚本错误，
+`ipppping` 与 Caddy active、`NRestarts=0`。这不是 G4 长时间负载验收。

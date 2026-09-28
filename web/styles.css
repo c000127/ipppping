@@ -107,7 +107,7 @@ button:disabled { cursor: default; color: var(--text-dim); background: transpare
 .card.card-enter { opacity: 0; }
 .card.card-enter-active { opacity: 1; transition: opacity var(--motion); }
 .card-removing { pointer-events: none; }
-.card-head { display: grid; gap: 12px; padding: 16px 18px 8px; min-width: 0; }
+.card-head { --card-inline-pad: 18px; display: grid; gap: 12px; padding: 16px var(--card-inline-pad) 8px; min-width: 0; }
 .route { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; color: var(--text); font-size: 18px; line-height: 1.5; font-weight: 600; }
 .route-node { min-width: 0; overflow-wrap: anywhere; }
 .route-badges { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
@@ -118,13 +118,13 @@ button:disabled { cursor: default; color: var(--text-dim); background: transpare
 .badge-ext { color: var(--accent3); background: #213529; }
 .route-arrow { color: var(--text-sec); font-size: 16px; }
 .route-arrow-down { display: none; }
-.card-right { min-width: 0; border-top: 1px solid var(--border); padding-top: 10px; }
+.card-right { min-width: 0; border-top: 1px solid var(--border); margin-inline: calc(-1 * var(--card-inline-pad)); padding: 10px var(--card-inline-pad) 0; }
 .stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); min-width: 0; }
 .stat-support { display: contents; }
-.stat-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 4px 10px; min-width: 0; text-align: center; }
+.stat-item { display: grid; grid-template-columns: minmax(0, max-content); align-content: center; justify-content: center; justify-items: start; gap: 4px; padding: 4px 10px; min-width: 0; text-align: left; }
 .stat-support .stat-item { border-left: 1px solid var(--border); }
 .stat-label { font-size: 12px; color: var(--text-sec); text-transform: uppercase; letter-spacing: .04em; }
-.stat-value { display: flex; align-items: baseline; justify-content: center; flex-wrap: wrap; gap: 2px; font-size: 18px; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; color: var(--text-sec); max-width: 100%; }
+.stat-value { display: flex; align-items: baseline; justify-content: flex-start; flex-wrap: wrap; gap: 2px; font-size: 18px; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; color: var(--text-sec); max-width: 100%; }
 .stat-primary .stat-value { color: var(--text); }
 .stat-number { min-width: 0; overflow-wrap: anywhere; }
 .stat-unit { font-size: 12px; color: inherit; }
@@ -155,7 +155,7 @@ button:disabled { cursor: default; color: var(--text-dim); background: transpare
 
 @container main (min-width: 1360px) {
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .stats-only .card-head { grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); align-items: center; min-height: 160px; gap: 18px; padding: 20px; }
+  .stats-only .card-head { --card-inline-pad: 20px; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); align-items: center; min-height: 160px; gap: 18px; padding: 20px; }
   .stats-only .route { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'badge source' '. arrow' '. target'; font-size: 20px; }
   .stats-only .route-badges { grid-area: badge; flex-wrap: wrap; max-width: 74px; align-self: start; }
   .stats-only .route-source { grid-area: source; }
@@ -163,13 +163,13 @@ button:disabled { cursor: default; color: var(--text-dim); background: transpare
   .stats-only .route-arrow { grid-area: arrow; }
   .stats-only .route-arrow-inline { display: none; }
   .stats-only .route-arrow-down { display: inline; }
-  .stats-only .card-right { position: relative; border-top: 0; border-left: 0; padding: 0 0 0 16px; }
+  .stats-only .card-right { position: relative; border-top: 0; border-left: 0; margin-inline: 0; padding: 0 0 0 16px; }
   .stats-only .card-right::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; border-left: 1px solid var(--border); }
   .stats-only .stats { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); align-items: center; }
-  .stats-only .stat-primary { padding-left: 0; align-items: flex-end; text-align: right; }
+  .stats-only .stat-primary { display: flex; flex-direction: column; padding-left: 0; align-items: flex-end; text-align: right; }
   .stats-only .stat-primary .stat-value { justify-content: flex-end; }
   .stats-only .stat-support { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .stats-only .stat-support .stat-item { border: 0; padding: 0; align-items: flex-end; text-align: right; }
+  .stats-only .stat-support .stat-item { display: flex; flex-direction: column; border: 0; padding: 0; align-items: flex-end; text-align: right; }
   .stats-only .stat-support .stat-value { justify-content: flex-end; }
   .stats-only .stat-primary { --fit-current-value: 1; }
   .stats-only .stat-primary .stat-value { width: 100%; flex-wrap: nowrap; }
@@ -177,7 +177,7 @@ button:disabled { cursor: default; color: var(--text-dim); background: transpare
   .stats-only .stat-primary .stat-unit { flex: 0 0 auto; white-space: nowrap; }
 }
 @container main (max-width: 768px) {
-  .card-head { padding: 12px; gap: 8px; }
+  .card-head { --card-inline-pad: 12px; padding: 12px; gap: 8px; }
   .route { font-size: 16px; }
   .stat-item { padding: 4px; }
   .stat-value { font-size: 16px; }
@@ -186,9 +186,9 @@ button:disabled { cursor: default; color: var(--text-dim); background: transpare
 @container main (max-width: 460px) {
   .stats { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); align-items: stretch; }
   .stat-support { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .stat-support .stat-item { border: 0; padding: 0 2px; align-items: flex-end; text-align: right; }
+  .stat-support .stat-item { display: flex; flex-direction: column; border: 0; padding: 0 2px; align-items: flex-end; text-align: right; }
   .stat-support .stat-value { justify-content: flex-end; }
-  .stat-primary { align-self: stretch; align-items: flex-start; border-right: 1px solid var(--border); padding-block: 0; padding-right: 8px; text-align: left; }
+  .stat-primary { display: flex; flex-direction: column; align-self: stretch; align-items: flex-start; border-right: 1px solid var(--border); padding-block: 0; padding-right: 8px; text-align: left; }
   .stat-primary { --fit-current-value: 1; }
   .stat-primary .stat-value { width: 100%; flex-wrap: nowrap; justify-content: flex-start; }
   .stat-primary .stat-number { font-size: 1.66em; flex: 0 0 auto; white-space: nowrap; overflow-wrap: normal; }

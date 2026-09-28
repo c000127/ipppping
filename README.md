@@ -40,9 +40,13 @@ put a TLS reverse proxy in front of it.
 
 The deployed main page still uses PNG charts. An independent, opt-in
 `/chart-trial` page uses a bounded Canvas renderer and the v2 series API;
-it does not load on the main page. See the
-[2026-09-23 frontend release record](docs/FRONTEND_PUBLIC_RELEASE.md) for
-deployed artifacts, verification and remaining rollout gates.
+`/chart-matrix-trial` integrates the production controls with a bounded
+Canvas matrix. Neither renderer loads on the main page. See the
+[frontend release record](docs/FRONTEND_PUBLIC_RELEASE.md) for deployed
+artifacts, verification and remaining rollout gates.
+
+The shared borderless layout and five-metric alignment are enforced by the
+[frontend visual invariants](docs/FRONTEND_DESIGN_RULES.md) and Chrome tests.
 
 ## Pairing modes
 

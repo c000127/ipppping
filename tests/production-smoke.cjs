@@ -42,6 +42,17 @@ const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
     const sizes = await page.locator('.card').first().locator('.stat-number').evaluateAll(items =>
       items.map(el => parseFloat(getComputedStyle(el).fontSize)));
     assert.equal(sizes[0], sizes[1], 'five-column results must keep numeric values at the same size');
+    const design = await page.locator('.card').first().evaluate(card => {
+      const edge = card.getBoundingClientRect(), line = card.querySelector('.card-right').getBoundingClientRect();
+      return { noBorder: getComputedStyle(card).borderTopWidth === '0px',
+        fullSeparator: Math.abs(edge.left - line.left) < 1 && Math.abs(edge.right - line.right) < 1,
+        aligned: [...card.querySelectorAll('.stat-item')].every(item => {
+          const label = item.querySelector('.stat-label').getBoundingClientRect();
+          const value = item.querySelector('.stat-value').getBoundingClientRect();
+          return Math.abs(label.left - value.left) < 1;
+        }) };
+    });
+    assert.deepEqual(design, { noBorder: true, fullSeparator: true, aligned: true });
     assert.equal(await page.locator('.card .badge-ext').count(), 2);
     assert.equal(await page.locator('.card .badge-v6').count(), 1);
     await page.screenshot({ path: path.join(output, 'results-desktop.png'), fullPage: true });

@@ -5,6 +5,8 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 const origin = process.env.IPPPPING_SITE || 'https://ipppping.hachimihaqile.top';
 const expectedAppAsset = '/static/assets/app.e036d7b6d2eaa8be.js';
+const release = JSON.parse(fs.readFileSync(path.join(__dirname, '../build/web-release/manifest.json'), 'utf8'));
+const expectedStylesAsset = '/static/assets/' + Object.keys(release.assets).find(name => name.startsWith('styles.'));
 (async () => {
   const nodesResponse = await fetch(origin + '/api/nodes', { cache: 'no-store' });
   assert.equal(nodesResponse.status, 200);
@@ -31,6 +33,7 @@ const expectedAppAsset = '/static/assets/app.e036d7b6d2eaa8be.js';
   assert.equal(main.status, 200);
   const mainHtml = await main.text();
   assert.ok(mainHtml.includes(expectedAppAsset));
+  assert.ok(mainHtml.includes(expectedStylesAsset));
   assert.ok(!mainHtml.includes('chart-matrix-trial.js'));
   const browser = await chromium.launch({ headless: true, ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}) });
   try {
@@ -45,6 +48,19 @@ const expectedAppAsset = '/static/assets/app.e036d7b6d2eaa8be.js';
     await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 2 routes'));
     assert.equal(await page.locator('.card').count(), 2);
     assert.equal(await page.locator('.trial-plot').count(), 0);
+    const design = await page.locator('.card').first().evaluate(card => {
+      const edge = card.getBoundingClientRect();
+      const line = card.querySelector('.card-right').getBoundingClientRect();
+      const metrics = [...card.querySelectorAll('.stat-item')].map(item => {
+        const label = item.querySelector('.stat-label').getBoundingClientRect();
+        const value = item.querySelector('.stat-value').getBoundingClientRect();
+        return Math.abs(label.left - value.left) < 1;
+      });
+      return { noBorder: getComputedStyle(card).borderTopWidth === '0px',
+        fullSeparator: Math.abs(edge.left - line.left) < 1 && Math.abs(edge.right - line.right) < 1,
+        aligned: metrics.every(Boolean) };
+    });
+    assert.deepEqual(design, { noBorder: true, fullSeparator: true, aligned: true });
     await page.locator('[data-mode="charts"]').click();
     await page.locator('#goBtn').click();
     await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 2 routes'));
@@ -72,6 +88,6 @@ const expectedAppAsset = '/static/assets/app.e036d7b6d2eaa8be.js';
       compressed: response.headers.get('content-encoding'), v4MaxMs: full.summary.max_median_ms,
       multiFixedExternalRoutes: 4,
       canvasInstances: await page.evaluate(() => ChartMatrixTrial.instanceCount),
-      mainAppAsset: expectedAppAsset, errors }, null, 2));
+      mainAppAsset: expectedAppAsset, mainStylesAsset: expectedStylesAsset, errors }, null, 2));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

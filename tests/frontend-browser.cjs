@@ -173,12 +173,26 @@ async function main() {
         assert.equal(visual.horizontalOverflow, false);
         await assertNoResultStatus(page, `normal results at ${width}px`);
         if (visual.mainWidth > 460 && visual.mainWidth < 1360) {
-          const centered = await page.evaluate(() => [...document.querySelector('.card .stats').querySelectorAll('.stat-item')].every(item => {
-            const center = rect => (rect.left + rect.right) / 2;
-            return Math.abs(center(item.getBoundingClientRect()) - center(item.querySelector('.stat-label').getBoundingClientRect())) < 2
-              && Math.abs(center(item.getBoundingClientRect()) - center(item.querySelector('.stat-value').getBoundingClientRect())) < 2;
-          }));
-          assert.equal(centered, true, `five-column metric content is not centered at ${width}px`);
+          const fiveColumn = await page.evaluate(() => {
+            const card = document.querySelector('.card');
+            const edge = card.getBoundingClientRect();
+            const separator = card.querySelector('.card-right').getBoundingClientRect();
+            const metrics = [...card.querySelectorAll('.stat-item')].map(item => {
+              const cell = item.getBoundingClientRect();
+              const label = item.querySelector('.stat-label').getBoundingClientRect();
+              const value = item.querySelector('.stat-value').getBoundingClientRect();
+              const clusterLeft = Math.min(label.left, value.left);
+              const clusterRight = Math.max(label.right, value.right);
+              return { aligned: Math.abs(label.left - value.left) < 1,
+                groupCentered: Math.abs((clusterLeft + clusterRight - cell.left - cell.right) / 2) < 2 };
+            });
+            return { separatorLeft: Math.abs(separator.left - edge.left),
+              separatorRight: Math.abs(separator.right - edge.right), metrics };
+          });
+          assert.ok(fiveColumn.separatorLeft < 1 && fiveColumn.separatorRight < 1,
+            `route/metric separator must meet card edges at ${width}px: ${JSON.stringify(fiveColumn)}`);
+          assert.ok(fiveColumn.metrics.every(metric => metric.aligned && metric.groupCentered),
+            `five-column labels and values must align left inside centered groups at ${width}px: ${JSON.stringify(fiveColumn)}`);
         }
         if (visual.mainWidth <= 460 || visual.mainWidth >= 1360) {
           const divider = await page.evaluate(() => {

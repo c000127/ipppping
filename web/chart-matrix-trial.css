@@ -12,9 +12,9 @@
   --border-hi: rgba(255, 255, 255, .15);
   --trial-plot: #0d0d0d;
   --trial-rtt: #8bd6e3;
-  --trial-range: #ae9cdb;
+  --trial-range-fill: rgba(174, 156, 219, .16);
   --trial-loss: #f49b81;
-  --trial-loss-halo: rgba(244, 155, 129, .18);
+  --trial-loss-fill: rgba(244, 155, 129, .28);
   --radius: 4px;
   --control-radius: 4px;
   font-variant-numeric: tabular-nums;
@@ -25,8 +25,6 @@
 }
 .matrix-integrated-trial .trial-mark {
   color: var(--accent2);
-  border: 1px solid var(--trial-rule);
-  border-radius: 3px;
   padding: 2px 6px;
   font-size: 11px;
   white-space: nowrap;
@@ -43,7 +41,7 @@
   background: var(--bg-panel);
   border-top: 1px solid var(--trial-rule);
 }
-.matrix-integrated-trial .section-head { border-bottom: 1px solid var(--trial-rule); margin-bottom: 5px; }
+.matrix-integrated-trial .section-head { margin-bottom: 5px; }
 .matrix-integrated-trial .node {
   position: relative;
   border-radius: 3px;
@@ -62,26 +60,22 @@
 .matrix-integrated-trial .node-anchor[aria-pressed="true"] {
   color: var(--accent2);
   background: rgba(187, 163, 255, .1);
-  box-shadow: inset 0 0 0 1px rgba(187, 163, 255, .35);
 }
 .matrix-integrated-trial .badge {
-  border: 1px solid currentColor;
   border-radius: 3px;
-  padding: 1px 5px;
-  background: transparent;
+  padding: 2px 5px;
   font-weight: 500;
 }
 .matrix-integrated-trial .node-meta { padding: 0 3px; }
-.matrix-integrated-trial .badge-v4 { color: #bcbcbc; border-color: rgba(255, 255, 255, .18); }
-.matrix-integrated-trial .badge-v6 { color: #c2aff4; border-color: rgba(194, 175, 244, .32); }
-.matrix-integrated-trial .badge-ext { color: #88d9a3; border-color: rgba(136, 217, 163, .32); }
+.matrix-integrated-trial .badge-v4 { color: #bcbcbc; background: rgba(255, 255, 255, .07); }
+.matrix-integrated-trial .badge-v6 { color: #c2aff4; background: rgba(194, 175, 244, .1); }
+.matrix-integrated-trial .badge-ext { color: #88d9a3; background: rgba(136, 217, 163, .1); }
 .matrix-integrated-trial .range-select,
 .matrix-integrated-trial .pills,
 .matrix-integrated-trial .pairing-mode,
 .matrix-integrated-trial .view-mode,
 .matrix-integrated-trial .axis-option {
   background: #151515;
-  border: 1px solid var(--trial-rule);
   border-radius: 4px;
 }
 .matrix-integrated-trial .pill.on,
@@ -89,17 +83,14 @@
 .matrix-integrated-trial .view-mode-btn.on {
   color: var(--text);
   background: #262626;
-  box-shadow: inset 0 0 0 1px var(--border-hi);
 }
 .matrix-integrated-trial .go-btn {
   background: #262626;
-  border: 1px solid var(--border-hi);
 }
 .matrix-integrated-trial .go-btn.pending:not(:disabled) {
   background: #2d2a36;
-  border-color: rgba(194, 175, 244, .36);
 }
-.matrix-integrated-trial .go-btn:disabled { background: transparent; border-color: var(--trial-rule); }
+.matrix-integrated-trial .go-btn:disabled { background: transparent; }
 .matrix-integrated-trial .trial-intro,
 .matrix-integrated-trial .trial-status {
   max-width: 960px;
@@ -109,7 +100,6 @@
 .matrix-integrated-trial .trial-intro {
   color: var(--text-sec);
   padding: 0 0 8px;
-  border-bottom: 1px solid var(--trial-rule);
 }
 .matrix-integrated-trial .trial-status {
   color: var(--text-dim);
@@ -117,10 +107,9 @@
   overflow-wrap: anywhere;
 }
 .matrix-integrated-trial .card {
-  border: 1px solid var(--trial-rule);
   background: var(--bg-card);
 }
-.matrix-integrated-trial .card:hover { border-color: var(--border-hi); background: #101010; }
+.matrix-integrated-trial .card:hover { background: #101010; }
 .matrix-integrated-trial .route { letter-spacing: -.025em; }
 .matrix-integrated-trial .stat-value,
 .matrix-integrated-trial .clock,
@@ -137,7 +126,6 @@
   padding: 7px 11px;
   color: var(--text-sec);
   background: var(--bg-panel);
-  border: 1px solid var(--trial-rule);
   border-radius: 4px;
   font-size: 11px;
   line-height: 1.3;
@@ -146,15 +134,11 @@
 .matrix-integrated-trial .matrix-key span::before { content: ''; display: inline-block; flex: none; }
 .matrix-integrated-trial .key-rtt::before { width: 16px; border-top: 2px solid var(--trial-rtt); }
 .matrix-integrated-trial .key-range::before {
-  width: 12px; height: 9px;
-  border-inline: 1px solid var(--trial-range);
-  border-top: 1px solid var(--trial-range);
-  border-bottom: 1px solid var(--trial-range);
+  width: 13px; height: 7px; background: var(--trial-range-fill);
 }
 .matrix-integrated-trial .key-loss::before {
-  width: 7px; height: 7px; border-radius: 50%;
+  width: 3px; height: 10px;
   background: var(--trial-loss);
-  box-shadow: 0 0 0 3px var(--trial-loss-halo);
 }
 .matrix-integrated-trial .trial-plot {
   width: 100%;

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import gzip
+import hashlib
 import http.server
 import json
 import os
@@ -25,6 +27,7 @@ from series_v2 import read_snapshot, wire_response, accepts_gzip
 
 BATCH_EXECUTOR = ThreadPoolExecutor(max_workers=MAX_GRAPH_WORKERS, thread_name_prefix="stats")
 BATCH_SLOTS = threading.BoundedSemaphore(MAX_BATCH_REQUESTS)
+MAX_V2_SUMMARY_PAGE = 32
 
 SECURITY_HEADERS = [
     ("X-Content-Type-Options", "nosniff"),
@@ -597,6 +600,62 @@ def handle_stats_batch(params):
         BATCH_SLOTS.release()
     return json.dumps({"items": items}).encode(), HTTPStatus.OK
 
+def _v2_summary_batch_item(pair, start, end):
+    identity = {"source": pair["source"], "target": pair["target"], "protocol": pair["type"]}
+    try:
+        path, _, _ = resolve_rrd(pair["source"], pair["target"], pair["type"])
+        value = read_snapshot(path, start, end, parse_lastupdate)
+        return {**series_response(value, 120, True), **identity}
+    except FileNotFoundError:
+        return {**identity, "error": "no_data"}
+    except RuntimeError:
+        return {**identity, "error": "snapshot_changed"}
+    except (OSError, ValueError, LookupError, subprocess.SubprocessError) as exc:
+        LOG.warning("v2 batch summary failed for %s -> %s (%s): %s",
+                    pair["source"], pair["target"], pair["type"], exc)
+        return {**identity, "error": "rrd_error"}
+
+
+def handle_v2_summary_batch(params, compressed=False):
+    """Bounded pages of v2 summaries, with one frozen end across matrix pages."""
+    raw_nodes = first_param(params, "nodes", "")
+    node_ids = [node_id for node_id in raw_nodes.split(",") if node_id]
+    if len(node_ids) < 2:
+        return json_error("invalid_selection", "select at least two nodes", HTTPStatus.BAD_REQUEST)
+    try:
+        pairs = make_pairs(node_ids, first_param(params, "anchor") or None)
+        dur = int(first_param(params, "dur", "10800"))
+        offset = int(first_param(params, "offset", "0"))
+        limit = int(first_param(params, "limit", "16"))
+        now = int(time.time())
+        end = int(first_param(params, "end", str(now // 60 * 60)))
+        if dur not in ALLOWED_DURATIONS or not 0 <= offset <= len(pairs) or not 1 <= limit <= MAX_V2_SUMMARY_PAGE:
+            raise ValueError("invalid duration, offset or page limit")
+        if end % 60 or not now - 172800 <= end <= now:
+            raise ValueError("end must be minute-aligned within 48h")
+    except (TypeError, ValueError) as exc:
+        return json_error("invalid_parameter", str(exc), HTTPStatus.BAD_REQUEST)
+
+    page = pairs[offset:offset + limit]
+    if page and not BATCH_SLOTS.acquire(blocking=False):
+        return json_error("busy", "summary capacity reached; retry later", HTTPStatus.SERVICE_UNAVAILABLE)
+    try:
+        items = list(windowed_map(BATCH_EXECUTOR, lambda pair: _v2_summary_batch_item(pair, end - dur, end),
+                                  page, MAX_GRAPH_WORKERS)) if page else []
+    finally:
+        if page:
+            BATCH_SLOTS.release()
+    next_offset = offset + len(items)
+    pair_keys = [(pair["source"], pair["target"], pair["type"]) for pair in pairs]
+    selection_id = hashlib.sha256(json.dumps(pair_keys, separators=(",", ":")).encode()).hexdigest()
+    body = json.dumps({"schema": "ipppping.summary-batch.v2", "selection_id": selection_id,
+                       "end": end, "dur": dur,
+                       "offset": offset, "limit": limit, "total": len(pairs),
+                       "next_offset": next_offset if next_offset < len(pairs) else None,
+                       "items": items}, allow_nan=False, separators=(",", ":")).encode()
+    return (gzip.compress(body, compresslevel=3, mtime=0) if compressed else body), HTTPStatus.OK
+
+
 @serialized_keys
 def handle_graph(params):
     try:
@@ -909,6 +968,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Cache-Control", "public, max-age=15, s-maxage=30, stale-while-revalidate=60")
             else:
                 self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        elif path == "/api/v2/summary-batch":
+            compressed = accepts_gzip(self.headers.get("Accept-Encoding"))
+            data, status = handle_v2_summary_batch(params, compressed)
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_security_headers()
+            for k, v in cors_headers: self.send_header(k, v)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Vary", "Accept-Encoding")
+            if compressed and status == HTTPStatus.OK:
+                self.send_header("Content-Encoding", "gzip")
+            if status == HTTPStatus.SERVICE_UNAVAILABLE:
+                self.send_header("Retry-After", "2")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)

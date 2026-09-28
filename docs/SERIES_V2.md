@@ -17,7 +17,36 @@ An API test checks that actual HTTP gzip decompresses to the identity response.
 `GET /api/v2/summary` accepts the same parameters but omits `bins` and aggregation
 metadata. Both use the same snapshot/statistics implementation and existing
 8 MiB / 256-entry total stats cache, not independent unlimited caches. A batch
-summary and matrix integration are intentionally deferred until G3 passes.
+summary and matrix integration were deferred until G3 passed. P4 development now
+includes a bounded summary-batch endpoint, but it is not yet deployed or used by
+the production Charts page.
+
+## P4 summary-batch draft (local development only)
+
+`GET /api/v2/summary-batch?nodes=ID,ID&anchor=ID,ID&dur=10800&end=E&offset=0&limit=16`
+uses the same selection and multi-Fixed direction rules as `/api/pairs`. `anchor`
+is optional. It returns `schema: "ipppping.summary-batch.v2"`, a stable
+`selection_id` digest of the ordered legal pair list, frozen `end`, `dur`,
+`offset`, `limit`, `total`, `next_offset` and `items` in pair order. Each
+successful item is the regular `/api/v2/summary` contract plus
+`source`/`target`/`protocol`; an unavailable route instead has those identities
+and `error: no_data`, `snapshot_changed` or `rrd_error`. A single route failure
+does not discard the other summaries or automatically request PNG.
+
+`limit` is 1–32, default 16; `offset` is 0–`total`. The response always includes
+the chosen minute-aligned `end`, which the client must explicitly reuse on every
+page to avoid crossing a sampling boundary while constructing one unified axis.
+The client must also reject pages whose `selection_id` or `total` differs.
+The existing 20-node/500-pair selection limits apply. Each page obeys the
+configured shared RRDtool worker limit and batch admission limit (both default
+to four), shared with legacy stats-batch. Gzip is negotiated with
+`Accept-Encoding` and `Vary`;
+`Cache-Control: no-store` prevents a browser from silently reusing a partial
+matrix. A busy page returns 503 with `Retry-After: 2`. Raw RRD snapshots share
+the existing bounded stats cache; this endpoint creates no independent cache.
+The frontend must not request all pages in parallel or draw a changing unified
+axis before the complete selection has been accounted for. Full-matrix load and
+memory budgets remain G4 work.
 
 ## Parameters and errors
 

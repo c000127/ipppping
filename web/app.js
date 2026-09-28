@@ -210,10 +210,34 @@ async function loadNodes() {
     if (!Array.isArray(data)) throw new Error('invalid node response');
     nodes = sortNodesByLabel(data);
     renderSidebar();
+    restoreHandoff();
   } catch (error) {
     renderNodesError();
     toast('Failed to load nodes', true);
   }
+}
+
+function restoreHandoff() {
+  const state = QueryHandoff.decode(window.location.search, nodes.map(node => node.id));
+  if (!state) { updSel(); return; }
+  const chosen = new Set(state.nodes);
+  document.querySelectorAll('.node[data-node-id]').forEach(row => {
+    const checked = chosen.has(row.dataset.nodeId);
+    row.querySelector('.node-cb').checked = checked;
+    row.classList.toggle('on', checked);
+  });
+  draftSelection = readSidebarSelection();
+  draftAnchors.clear();
+  state.fixed.forEach(id => draftAnchors.add(id));
+  draftPairMode = state.fixed.length ? 'fixed' : 'all';
+  draftDuration = String(state.dur);
+  document.getElementById('durSelect').value = draftDuration;
+  activeFilter = state.filter;
+  unifiedYAxisEnabled = state.unified;
+  document.getElementById('unifiedAxisToggle').checked = state.unified;
+  updatePairingControls();
+  updateFilterButtons();
+  setViewMode(state.mode);
 }
 
 restoreStoredStats(selectedDuration);
@@ -400,6 +424,10 @@ function updSel() {
     }
   }
   document.getElementById('goBtn').disabled = s.length < 2 || !!message;
+  const handoff = !message && pairs > 0 ? QueryHandoff.encode({ nodes: s,
+    fixed: anchors, dur: Number(draftDuration), mode: 'charts',
+    filter: activeFilter, unified: unifiedYAxisEnabled }) : '';
+  document.getElementById('canvasTrialLink').href = '/chart-matrix-trial' + (handoff ? '?' + handoff : '');
   const pending = !selectionEquals(s, appliedSelection)
     || draftDuration !== selectedDuration
     || draftViewMode !== appliedViewMode
@@ -931,7 +959,7 @@ async function showGraphs() {
 function setFilter(f) {
   activeFilter = f;
   updateFilterButtons();
-  updateSelectionFreshness();
+  updSel();
   if (currentPairs.length === 0) return;
   renderGrid({ filterChange: true, preserveRequest: true });
 }
@@ -940,6 +968,7 @@ function setUnifiedYAxis(enabled) {
   unifiedYAxisEnabled = Boolean(enabled);
   const toggle = document.getElementById('unifiedAxisToggle');
   if (toggle && toggle.checked !== unifiedYAxisEnabled) toggle.checked = unifiedYAxisEnabled;
+  updSel();
   if (!chartsEnabled() || currentPairs.length === 0) return;
   renderGrid({
     animate: false,

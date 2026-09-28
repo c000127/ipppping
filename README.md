@@ -41,7 +41,10 @@ put a TLS reverse proxy in front of it.
 The deployed main page still uses PNG charts. An independent, opt-in
 `/chart-trial` page uses a bounded Canvas renderer and the v2 series API;
 `/chart-matrix-trial` integrates the production controls with a bounded
-Canvas matrix. Neither renderer loads on the main page. See the
+Canvas matrix. The main sidebar's “Try Canvas Charts” link carries draft
+controls to that trial without loading any matrix until Show is pressed;
+returning to production likewise restores controls without querying.
+Neither Canvas renderer loads on the main page. See the
 [frontend release record](docs/FRONTEND_PUBLIC_RELEASE.md) for deployed
 artifacts, verification and remaining rollout gates.
 

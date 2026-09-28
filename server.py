@@ -1066,7 +1066,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
 
-        elif path in {"/static/styles.css", "/static/app.js", "/static/request-state.js", "/static/ui-components.js", "/static/chart-trial.js", "/static/chart-trial.css", "/static/chart-matrix-trial.js", "/static/chart-matrix-trial.css", "/static/matrix-data.js", "/static/vendor/uplot.js", "/static/vendor/uplot.css"} or re.fullmatch(r"/static/assets/[a-z-]+\.[0-9a-f]{16}\.(?:js|css)", path):
+        elif path in {"/static/styles.css", "/static/app.js", "/static/request-state.js", "/static/ui-components.js", "/static/query-handoff.js", "/static/chart-trial.js", "/static/chart-trial.css", "/static/chart-matrix-trial.js", "/static/chart-matrix-trial.css", "/static/matrix-data.js", "/static/vendor/uplot.js", "/static/vendor/uplot.css"} or re.fullmatch(r"/static/assets/[a-z-]+\.[0-9a-f]{16}\.(?:js|css)", path):
             filename = os.path.basename(path)
             immutable = path.startswith('/static/assets/')
             content_type = "text/css; charset=utf-8" if filename.endswith(".css") else "text/javascript; charset=utf-8"

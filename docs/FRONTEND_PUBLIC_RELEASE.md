@@ -536,3 +536,46 @@ motion。60 秒/30 次滚动中 DOM 29,877、监听器 57、Canvas 4 数量
 180 ms 与 reduced motion 0 ms、首页 Results/两张 PNG 及全部 11 个
 指纹资源，均通过。线上 HTML/矩阵资源哈希与清单一致；`ipppping`、
 Caddy active，`NRestarts=0`。
+
+## 2026-09-29 主站显式 Canvas 试用入口
+
+用户已验收独立矩阵测试页。本次只在生产主站侧栏底部增加
+“Try Canvas Charts” 入口，往返保留草稿节点、多个 Fixed、时间范围、
+过滤及统一轴选择；均不自动提交查询。主站 Charts 默认仍用 PNG，
+试验页的 Results 与 Canvas Charts 由用户手动 Show 加载。
+同时增加严格的链接状态验证；失效节点或非法参数不被恢复。
+新增资源 `query-handoff.js` 被构建为指纹文件，旧指纹资源保留。
+
+构建和主控 staging `/root/ipppping-stage-handoff-reEh1taZ` 的
+manifest SHA-256 均为
+`b951944bb25fbf639dd7299f8cdfd500a608c8174ba31b21537f4faaaadb654c`。
+安装器验证后备份至
+`/root/ipppping-backup-20260928T164653244968Z`（UTC）。
+首页、矩阵页 HTML SHA-256 分别为
+`8b4daf2eb5ad5e9de0fbfefff9ddba3d1939c3efe3df31a2cac309df44420364`、
+`6e3dcc3e9cb88a42de277654e6b4c6a8630cbbf2e7b60f183e3fafd467f703ed`；
+主页面脚本 `app.b92c93ed00659b99.js`，矩阵脚本
+`chart-matrix-trial.61f2e51454a1f3b7.js`。
+
+发布前 Python 81 项、查询状态单测、主页面 Chrome（含 axe 0 项）、
+480 卡 Chrome（含 axe 0 项）、原单链路及请求契约检查通过。
+发布后 Chrome 校验首页 Results、两张 PNG、全部 12 个指纹资源、
+入口往返 0 次矩阵请求、独立页双栈与多 Fixed 的 4 个外部结果
+及 Canvas，均无脚本错误。安装后主控页面/服务端哈希对应本次
+构建，`ipppping` 与 Caddy active、`NRestarts=0`、swap 0。
+真实 477 路单次成本及尚未完成的 G4 长测见 [P4 报告](FRONTEND_P4_REPORT.md)；
+此发布不是 G4 或 G5 默认迁移。
+
+同日修正：试验页改变协议过滤或统一轴后，返回 PNG 的链接也立即
+同步两项草稿选择。最终 staging 为
+`/root/ipppping-stage-handoff-fix-1W5udt8z`，manifest SHA-256
+`c08420895fd2b971e8f0d87742bfd2b4edd68590e4d6c5bfa7636e4aa067a992`，
+矩阵页 HTML SHA-256
+`abf87d59a4dce047f4bc2b896a3625f22ebc6676f60beb4f96a80c16815eaf73`，
+新脚本为 `chart-matrix-trial.730b487120834cb4.js`；首页 HTML 与
+`app.b92c93ed00659b99.js` 均未变。安装器再次健康检查通过，
+自动备份 `/root/ipppping-backup-20260928T165523759957Z`。
+本地 480 卡和主页面 Chrome 往返回归、Python 81 项通过，公网
+再次验证过滤/统一轴往返与 Canvas、多 Fixed 链路，无脚本错误。
+较早的 `/root/ipppping-backup-20260928T164653244968Z` 仍可用于
+回到本轮显式入口之前。

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import re
 
-ASSETS = ('styles.css', 'request-state.js', 'ui-components.js', 'app.js',
+ASSETS = ('styles.css', 'request-state.js', 'ui-components.js', 'query-handoff.js', 'app.js',
           'chart-trial.css', 'chart-trial.js', 'chart-matrix-trial.css',
           'matrix-data.js', 'chart-matrix-trial.js', 'vendor/uplot.js', 'vendor/uplot.css')
 PAGES = ('index.html', 'chart-trial.html', 'chart-matrix-trial.html')

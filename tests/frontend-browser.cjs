@@ -51,10 +51,12 @@ const server = http.createServer((req, res) => {
     res.on('close', () => clearTimeout(timer));
     return;
   }
-  const name = pathname === '/' ? 'web/index.html' : pathname.startsWith('/static/') ? `web/${pathname.slice(8)}` : '';
+  const name = pathname === '/' ? 'web/index.html' : pathname === '/chart-matrix-trial'
+    ? 'web/chart-matrix-trial.html' : pathname.startsWith('/static/') ? `web/${pathname.slice(8)}` : '';
   if (!name || name.includes('..')) { res.writeHead(404).end(); return; }
   try {
-    const releaseName = name === 'web/index.html' ? 'build/web-release/index.html' : name.replace(/^web\/assets\//, 'build/web-release/assets/');
+    const releaseName = name === 'web/index.html' || name === 'web/chart-matrix-trial.html'
+      ? name.replace(/^web\//, 'build/web-release/') : name.replace(/^web\/assets\//, 'build/web-release/assets/');
     const body = baseline ? execFileSync('git', ['show', `0b33aa6:${name}`], { cwd: root, stdio: ['ignore','pipe','ignore'] }) : fs.readFileSync(path.join(root, process.env.TEST_BUILT_RELEASE ? releaseName : name));
     res.setHeader('Content-Type', name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css' : name.endsWith('.html') ? 'text/html' : 'font/woff2');
     res.end(body);
@@ -604,6 +606,38 @@ async function main() {
     }
     durations.sort((a,b) => a-b);
     report.mockRefresh = { samples: 30, medianMs: durations[14], p95Ms: durations[28] };
+    if (!baseline) {
+      await reset();
+      await page.evaluate(() => {
+        ['test_0', 'test_1', 'external'].forEach(tog);
+        setPairMode('fixed'); setAnchor('test_0'); setAnchor('test_1');
+        changeDuration('21600'); setFilter('ext'); setUnifiedYAxis(true);
+      });
+      assert.match(await page.locator('#canvasTrialLink').getAttribute('href'), /^\/chart-matrix-trial\?nodes=/);
+      await page.locator('#canvasTrialLink').click();
+      await page.locator('.node[data-node-id="test_0"]').waitFor();
+      assert.match(await page.locator('#trialStatus').textContent(), /^Selection restored;/);
+      assert.equal(await page.locator('.node-cb:checked').count(), 3);
+      assert.equal(await page.locator('.node-anchor[aria-pressed="true"]').count(), 2);
+      assert.equal(await page.locator('#durSelect').inputValue(), '21600');
+      assert.equal(await page.locator('#filterPills [data-filter="ext"]').getAttribute('aria-pressed'), 'true');
+      assert.equal(await page.locator('#unifiedAxisToggle').isChecked(), true);
+      assert.equal(await page.locator('#goBtn').textContent(), 'Show Charts');
+      assert.deepEqual(requests, [], 'opening the trial must not run a query');
+      await page.locator('#filterPills [data-filter="v6"]').click();
+      await page.locator('#unifiedAxisToggle').uncheck();
+      await page.locator('#pngBackLink').click();
+      await page.locator('#n_test_0').waitFor();
+      assert.equal(await page.locator('.node-cb:checked').count(), 3);
+      assert.equal(await page.locator('.node-anchor[aria-pressed="true"]').count(), 2);
+      assert.equal(await page.locator('#durSelect').inputValue(), '21600');
+      assert.equal(await page.locator('#filterPills [data-filter="v6"]').getAttribute('aria-pressed'), 'true');
+      assert.equal(await page.locator('#unifiedAxisToggle').isChecked(), false);
+      assert.equal(await page.locator('#goBtn').textContent(), 'Show Charts');
+      assert.deepEqual(requests, [], 'returning to PNG must not run a query');
+      report.cases.push({ case: 'canvas-opt-in-handoff', selection: 3, fixed: 2,
+        requests: requests.length, defaultRenderer: 'png' });
+    }
     assert.deepEqual(errors, [], 'uncaught browser exceptions');
     fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));

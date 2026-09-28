@@ -460,14 +460,25 @@ const server = http.createServer((req, res) => {
       await page.locator('.node[data-node-id="v' + i + '"] .node-select').click();
     assert.match(await page.locator('#selSummary').textContent(), /16 nodes.*480 results/);
     const prior = requests.length;
+    const fullStarted = performance.now();
     await page.locator('#goBtn').click();
     await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 480 routes'));
+    const fullReadyMs = Math.round(performance.now() - fullStarted);
     assert.equal(await page.locator('.card').count(), 480);
     assert.equal(await page.evaluate(() => ChartMatrixTrial.matrix.unifiedMax), 489 * 1.1);
     assert.equal(requests.slice(prior).filter(route => route === '/api/v2/summary-batch').length, 15);
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
     assert.ok(requests.slice(prior).filter(route => route === '/api/v2/series').length < 20);
     assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.cacheCount <= 8));
+    const filterMs = await page.evaluate(async () => {
+      const start = performance.now();
+      document.querySelector('[data-filter="v4"]').click();
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return Math.round(performance.now() - start);
+    });
+    assert.equal(await page.locator('.card').count(), 240);
+    await page.locator('[data-filter="all"]').click();
+    assert.equal(await page.locator('.card').count(), 480);
     await page.locator('#mainArea').evaluate(main => { main.scrollTop = main.scrollHeight; });
     await page.waitForTimeout(600);
     assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.cacheCount <= 8));
@@ -493,13 +504,23 @@ const server = http.createServer((req, res) => {
         assert.ok(row.pending <= 4 && row.canvases <= 4 && row.pixels <= 4 * 1280 * 220 * 4);
       };
       const started = Date.now();
-      let cycle = 0, previousSample = 0;
+      let cycle = 0, previousSample = 0, submits = 0;
+      const submitMs = [];
       await sample(0);
       while (Date.now() - started < soakSeconds * 1000) {
         await page.locator('#mainArea').evaluate((main, fraction) => {
           main.scrollTop = fraction * (main.scrollHeight - main.clientHeight);
         }, (cycle % 3) / 2);
         await page.waitForTimeout(2000);
+        if (cycle % 30 === 29) {
+          const submittedAt = Date.now();
+          await page.locator('#goBtn').click();
+          await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 480 routes'));
+          await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+          submitMs.push(Date.now() - submittedAt);
+          submits++;
+          assert.equal(await page.locator('.card').count(), 480);
+        }
         const elapsed = Date.now() - started;
         if (elapsed - previousSample >= 60000) { await sample(elapsed); previousSample = elapsed; }
         cycle++;
@@ -507,7 +528,10 @@ const server = http.createServer((req, res) => {
       await sample(Date.now() - started);
       const target = path.join(root, 'test-results/p4-matrix-browser-soak-' + soakSeconds + 's.json');
       fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.writeFileSync(target, JSON.stringify({ soakSeconds, cycles: cycle, samples, errors }, null, 2));
+      fs.writeFileSync(target, JSON.stringify({ soakSeconds, cycles: cycle, submits, submitMs,
+        summaryRequests: requests.filter(route => route === '/api/v2/summary-batch').length,
+        seriesRequests: requests.filter(route => route === '/api/v2/series').length,
+        samples, errors }, null, 2));
       console.log('Soak report:', target);
       await cdp.detach();
       await browserCdp?.detach();
@@ -556,6 +580,7 @@ const server = http.createServer((req, res) => {
     await reduced.close();
     assert.equal(requests.includes('/api/graph.png'), false);
     console.log(JSON.stringify({ routes: 480, summaryPages: 15,
+      fullReadyMs, filterMs,
       seriesRequests: requests.filter(route => route === '/api/v2/series').length,
       instanceCount: await page.evaluate(() => ChartMatrixTrial.instanceCount),
       cacheCount: await page.evaluate(() => ChartMatrixTrial.cacheCount), errors }, null, 2));

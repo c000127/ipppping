@@ -94,6 +94,8 @@ button:disabled { cursor: default; color: var(--text-dim); background: transpare
 .sel-info { display: grid; grid-template-rows: repeat(2, 20px); font-size: 12px; line-height: 20px; text-align: center; }
 .sel-info > div { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .sel-freshness { color: var(--text-dim); }
+.canvas-trial-link { align-self: center; color: var(--text-sec); font-size: 12px; text-decoration: none; padding: 3px 7px; }
+.canvas-trial-link:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .selection-error { color: var(--danger); }
 .sidebar-overlay { display: none; }
 

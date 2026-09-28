@@ -83,9 +83,21 @@ re-entry or unified-axis toggles. Cancel animations on replacement/disposal.
 `prefers-reduced-motion: reduce` must present final states immediately with
 no CSS/WAAPI transition, while preserving selected state and data semantics.
 
+## Explicit Canvas trial entry
+
+The production page remains PNG by default. Its “Try Canvas Charts” link may
+carry the **draft** node selection, Fixed nodes, duration, filter and unified
+axis to `/chart-matrix-trial`; the trial's “Production PNG” link carries the
+same controls back. Neither navigation may submit a query automatically, and
+the destination must validate all IDs and limits against the fresh node list
+before restoring controls. An invalid or stale link falls back to empty
+controls. This link is an opt-in navigation path, not a default renderer switch
+or an access-control boundary. The user must press Show Charts/Results to load.
+
 ## Required checks
 
-Run `tests/frontend-browser.cjs` and `tests/chart-matrix-browser.cjs` in Chrome
+Run `tests/query-handoff.test.cjs`, `tests/frontend-browser.cjs` and
+`tests/chart-matrix-browser.cjs` in Chrome
 after changes to these rules. They assert borderless surfaces, edge-to-edge
 stacked separators, five-column per-item left alignment with whole-item
 centering, and the 2×2 divider at representative container widths. Review

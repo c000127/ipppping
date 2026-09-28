@@ -445,6 +445,9 @@ const ChartMatrixTrial = (() => {
     }
     const go = $('goBtn');
     go.disabled = !!message;
+    const handoff = !message && count > 0 ? QueryHandoff.encode({ nodes: selection,
+      fixed: fixedIds, dur: draftDur, mode: draftMode, filter, unified }) : '';
+    $('pngBackLink').href = '/' + (handoff ? '?' + handoff : '');
     const pending = !selectionEqual(selection, appliedSelection) || !selectionEqual(fixedIds, appliedFixed) ||
       pairMode !== appliedPairMode || draftMode !== appliedMode || draftDur !== appliedDur;
     go.dataset.pending = String(pending); go.classList.toggle('pending', pending);
@@ -485,6 +488,26 @@ const ChartMatrixTrial = (() => {
       container.append(section);
     }
     updateControls();
+  }
+  function restoreHandoff() {
+    const state = QueryHandoff.decode(window.location.search, nodes.map(node => node.id));
+    if (!state) return false;
+    state.nodes.forEach(id => selected.add(id));
+    state.fixed.forEach(id => fixed.add(id));
+    pairMode = state.fixed.length ? 'fixed' : 'all';
+    draftMode = state.mode;
+    draftDur = state.dur;
+    filter = state.filter;
+    unified = state.unified;
+    $('durSelect').value = String(state.dur);
+    $('unifiedAxisToggle').checked = state.unified;
+    document.querySelectorAll('[data-filter]').forEach(button => {
+      const on = button.dataset.filter === filter;
+      button.classList.toggle('on', on); button.setAttribute('aria-pressed', String(on));
+    });
+    renderNodes();
+    syncSegment($('filterPills'));
+    return true;
   }
   function matches(pair) {
     return filter === 'all' || filter === 'ext' && pair.ext || filter === pair.type;
@@ -666,11 +689,12 @@ const ChartMatrixTrial = (() => {
       button.classList.toggle('on', on); button.setAttribute('aria-pressed', String(on));
     });
     syncSegment($('filterPills'));
+    updateControls();
     if (pairs.length && !queryLoading) renderCards({ enter: true });
-    else updateFreshness();
   });
   $('unifiedAxisToggle').addEventListener('change', () => {
     unified = $('unifiedAxisToggle').checked;
+    updateControls();
     if (matrix) {
       for (const index of [...active.keys()]) dispose(index);
       scheduleVisible();
@@ -720,7 +744,8 @@ const ChartMatrixTrial = (() => {
   json('/api/nodes').then(data => {
     if (!Array.isArray(data)) throw new Error('Invalid node list');
     nodes = [...data].sort((a, b) => collator.compare(a.label, b.label));
-    renderNodes(); status('Select nodes and submit. No matrix has been requested.');
+    if (restoreHandoff()) status('Selection restored; click Show Charts or Show Results. No query has run yet.');
+    else { renderNodes(); status('Select nodes and submit. No matrix has been requested.'); }
   }).catch(error => {
     $('sidebarInner').innerHTML = '<div class="empty"><div class="empty-title">Node list unavailable</div></div>';
     status('Node list failed: ' + error.message);

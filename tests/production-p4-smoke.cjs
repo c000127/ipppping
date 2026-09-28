@@ -4,9 +4,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 const origin = process.env.IPPPPING_SITE || 'https://ipppping.hachimihaqile.top';
-const expectedAppAsset = '/static/assets/app.e036d7b6d2eaa8be.js';
 const release = JSON.parse(fs.readFileSync(path.join(__dirname, '../build/web-release/manifest.json'), 'utf8'));
+const expectedAppAsset = '/static/assets/' + Object.keys(release.assets).find(name => name.startsWith('app.'));
 const expectedStylesAsset = '/static/assets/' + Object.keys(release.assets).find(name => name.startsWith('styles.'));
+const expectedHandoffAsset = '/static/assets/' + Object.keys(release.assets).find(name => name.startsWith('query-handoff.'));
 (async () => {
   const nodesResponse = await fetch(origin + '/api/nodes', { cache: 'no-store' });
   assert.equal(nodesResponse.status, 200);
@@ -34,9 +35,35 @@ const expectedStylesAsset = '/static/assets/' + Object.keys(release.assets).find
   const mainHtml = await main.text();
   assert.ok(mainHtml.includes(expectedAppAsset));
   assert.ok(mainHtml.includes(expectedStylesAsset));
-  assert.ok(!mainHtml.includes('chart-matrix-trial.js'));
+  assert.ok(mainHtml.includes(expectedHandoffAsset));
+  assert.ok(!mainHtml.includes('/static/assets/chart-matrix-trial.'));
   const browser = await chromium.launch({ headless: true, ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}) });
   try {
+    const home = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const handoffRequests = [];
+    home.on('request', request => {
+      if (request.url().includes('/api/') && !request.url().includes('/api/nodes'))
+        handoffRequests.push(new URL(request.url()).pathname);
+    });
+    await home.goto(origin + '/');
+    await home.locator('#n_akari_jp').waitFor();
+    for (const id of ['akari_jp', 'google_dns'])
+      await home.locator(`#n_${id} .node-label`).click();
+    assert.match(await home.locator('#canvasTrialLink').getAttribute('href'), /^\/chart-matrix-trial\?nodes=/);
+    await home.locator('#canvasTrialLink').click();
+    await home.locator('.node[data-node-id="akari_jp"]').waitFor();
+    assert.match(await home.locator('#trialStatus').textContent(), /^Selection restored;/);
+    assert.equal(await home.locator('.node-cb:checked').count(), 2);
+    assert.equal(await home.locator('#goBtn').textContent(), 'Show Charts');
+    await home.locator('#filterPills [data-filter="v6"]').click();
+    await home.locator('#unifiedAxisToggle').check();
+    await home.locator('#pngBackLink').click();
+    await home.locator('#n_akari_jp').waitFor();
+    assert.equal(await home.locator('.node-cb:checked').count(), 2);
+    assert.equal(await home.locator('#filterPills [data-filter="v6"]').getAttribute('aria-pressed'), 'true');
+    assert.equal(await home.locator('#unifiedAxisToggle').isChecked(), true);
+    assert.deepEqual(handoffRequests, [], 'opt-in navigation never starts a matrix request');
+    await home.close();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     const pageResponse = await page.goto(origin + '/chart-matrix-trial');
@@ -73,8 +100,10 @@ const expectedStylesAsset = '/static/assets/' + Object.keys(release.assets).find
     });
     assert.equal(motion.indicators, 3);
     assert.ok(motion.delta < 2 && motion.duration.includes('0.18s') && motion.decorative === 'true', JSON.stringify(motion));
+    const chartStarted = performance.now();
     await page.locator('#goBtn').click();
     await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 2 routes'));
+    const chartReadyMs = Math.round(performance.now() - chartStarted);
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
     assert.equal(await page.locator('.card').count(), 2);
     assert.deepEqual(await page.locator('.card').first().locator('.badge').allTextContents(), ['Ext', 'v4']);
@@ -105,8 +134,9 @@ const expectedStylesAsset = '/static/assets/' + Object.keys(release.assets).find
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ site: origin, total: data.total, end: data.end,
       compressed: response.headers.get('content-encoding'), v4MaxMs: full.summary.max_median_ms,
-      multiFixedExternalRoutes: 4, motion,
+      multiFixedExternalRoutes: 4, chartReadyMs, motion,
       canvasInstances: await page.evaluate(() => ChartMatrixTrial.instanceCount),
-      mainAppAsset: expectedAppAsset, mainStylesAsset: expectedStylesAsset, errors }, null, 2));
+      mainAppAsset: expectedAppAsset, mainStylesAsset: expectedStylesAsset,
+      mainHandoffAsset: expectedHandoffAsset, handoffRequests, errors }, null, 2));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

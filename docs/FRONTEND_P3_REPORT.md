@@ -1,6 +1,6 @@
 # P3 试点与剩余阶段状态
 
-更新于 2026-09-23：**P3 独立单链路试用页与兼容 API 已上线；G3 未通过，不扩大到 P4，也不把 Canvas 切为主页面默认渲染器。**
+P3 证据复核于 2026-09-28；P2/G2 Chrome 验收亦于当日复核。**P3 独立单链路试用页与兼容 API 已上线，单链路 G3 闸门通过；P4 全矩阵与 G5 默认迁移仍未实施，主页面继续使用 PNG。**
 首次发布时尚未推送；节点与采样未修改。后续仓库同步及公网制品核验见 [公网发布记录](FRONTEND_PUBLIC_RELEASE.md)；下文实验室数据不自动等于公网端到端收益。
 
 ## 已完成
@@ -116,30 +116,89 @@ RRD、没有发布代码**；之后的独立生产发布另见 [发布记录](FR
 正常更新缓存/历史。仅关闭 QA 新建标签页；测试后已撤销本轮创建的 `tcp:9222`
 forward，检查 forward/reverse 列表均为空。
 
-## 为何暂不扩大
+## G3 公网同链路成本补验（2026-09-28）
 
-G3 还存在实质缺口，不能为了完成阶段列表跳过：
+对 `akari_jp → google_dns` v4、3h、720 个列式区间，在公网做低频顺序采样，
+各路径 30 次；PNG 为 1280×280，与桌面试用页实际图面一致。每次强制刷新的
+PNG 带独立查询令牌；另列相同 URL 的 CDN 边缘缓存命中作为解释项，不把旧图
+命中速度当作一次新鲜查询的速度。
 
-1. **真实设备与浏览器**：一台浏览器报告 8 GB 档位的 Android Chrome 实机已通过；
-   用户明确取消低端机测试要求。Safari 或读屏结果仍缺；Chrome/WebKit 自动化已通过；Firefox 在当前 Windows
-   主机上被进程启动策略拒绝（Playwright `spawn UNKNOWN`），未绕过安全策略。
-2. **完整成本**：列式+实际 API gzip/identity 等价性已测，主控隔离实验测了
-   服务端耗时/字节；实机本地重复提交已测，但还缺公开网络链路、手机端纯解析/
-   绘制 CPU、浏览器进程峰值内存与
-   PNG/v2 同场景净收益。公网单链路功能已验证，不能把服务端微基准当成全站速度结论。
-3. **扩大范围的稳定性**：30 分钟单实例通过；60 分钟和 P4 多实例全矩阵尚未验证。
+| 路径 | 总耗时中位 / P95 | 传输体中位 | CDN 状态 |
+| --- | ---: | ---: | --- |
+| v2 列式 gzip | 368 / 435 ms | 2,130 B | DYNAMIC 30/30 |
+| 新令牌 PNG | 2,095 / 2,283 ms | 51,448 B | MISS 30/30 |
+| 相同 URL PNG | 206 / 453 ms | 51,448 B | HIT 25/30，EXPIRED 4/30，MISS 1/30 |
+
+同一公网单链路试用页再由 Chrome 153 做 30 次提交、显式 PNG 切换、Canvas
+本地重绘。提交至 v2 Canvas 可见中位/P95 为 370/485 ms；在已有 v2 快照下切到
+新 PNG 为 1,214/2,215 ms；Canvas 本地重绘为 37/41 ms。相应主线程任务时间
+中位为 16.6/23.6/6.4 ms。30 张 PNG 均为不同刷新令牌且 HTTP 200，无页面
+异常；v2 31 次均 HTTP 200。此分阶段测量不等于完整主页面 Charts 耗时，也不
+等于同一冻结 RRD 快照的逐像素比较，不能外推到全部路由或图表矩阵。此前
+冻结合成 RRD 的数值/缺口/极值配对验证仍是数据正确性的依据。
+
+Chrome 进程私有内存（7 个进程之和）从第 0 次 274.7 MiB，到第 15/20/25/30
+次分别为 342.6/326.0/341.1/329.1 MiB；同期 GPU 进程为
+120.0→185.2/172.9/186.9/174.4 MiB，呈预热与回收波动而非这一短程内
+单调上升。清理 GC 后 JS 堆约 2.40→2.99 MiB，DOM 节点 509→521 后稳定，
+监听数 47→53 后稳定。Canvas-only 25 次对照在预热后进程私有内存约
+290–303 MiB，PNG-only 25 次未显示持续上升；这两个控制组基于修复前试用页，
+PNG-only 会复用旧 URL，专为定位内存来源，不作为新鲜 PNG 的速度对照。早期旧页
+反复交替 PNG/Canvas 曾显示 GPU 内存增长，因此仍以 60 分钟实验室长测及后续
+多实例 G4 验证为准。
+这些是独立 Chrome 进程的抽样，不是连续峰值或 Android 物理内存测量。
+
+发布后的新构建又在本机合成 RRD/gzip 隔离服务上做 10 分钟 Chrome 复测，
+112 次提交/表格/PNG/Canvas 循环通过，无页面异常。DOM 976、监听器 54、
+文档 1 始终不变；GC 后 JS 堆从 3,265,444 B 到 3,548,908 B。
+启动时的高 DPR 预热峰值在首分钟回收，此后采样的 Chrome 进程私有内存
+约 390–416 MB、其中 GPU 约 220–235 MB；没有持续单调上升。
+本次报告为 `test-results/p3-chromium-g3-final/browser-report.json`，只使用本机合成数据，
+不是生产 10 分钟负载测试。它验证了 PNG 新令牌的最终构建生命周期，
+不替代下面的 60 分钟单实例测试或未来 G4 多实例上限测试。
+
+此前一轮开始于本次 PNG 新令牌改动前的同一单实例试用页，独立运行
+3,605 秒、676 次提交/表格/PNG/Canvas 循环，正式通过 60 分钟 Chrome
+断言。GC 后 DOM 始终 976、监听器 54、文档 1；JS 堆从 3,259,688 B 到
+3,875,072 B，预热两分钟后的增长 475,344 B，最后半小时仅增长约 20 KB。
+这一轮测的是 PNG 令牌改动前的生命周期实现；新版独立 10 分钟复测和
+公网 30 次刷新覆盖了改动后的代码。旧轮 `test-results/p3-chromium/browser-report.json`
+有完整检查点。旧轮运行约 22–59 分钟期间抽查的 GPU 进程私有内存约
+180–207 MiB，未单调上升；此项是人工离散抽查，不是连续峰值追踪。
+
+试用页原本对重复提交的 PNG 对照复用相同 URL，可能在浏览器缓存里显示旧图。
+现按提交代次生成新 PNG 令牌，同一快照的模式往返保持令牌不变；本地浏览器
+回归验证该行为，2026-09-28 公网发布后 Chrome 的 30 次实测亦确认每次更新。
+详细原始 JSON 位于 Git 忽略的 `test-results/g3/`，测量脚本为
+`tests/g3-public-compare.cjs` 和 `tests/g3-browser-cost.cjs`。公网传输测试每次
+请求后停 1 秒，顺序而非并发压测。
+
+## G3 判定与扩大边界
+
+单链路 G3 通过的依据：固定合成 RRD 的数值、缺口和极值对照及 PNG 显式回退；
+Android Chrome 实机 100 次操作；同一路由公网 v2/新鲜 PNG 传输和 Chrome
+端到端分阶段成本；原生命周期 60 分钟与最终构建 10 分钟复测。这个判定仅允许
+启动 P4 的受控开发与验收，不授权把 Canvas 切成主页面默认。公网 CDN 命中
+的旧 URL PNG 仍可能比 v2 快，但与主动刷新不是同一语义。
+
+尚未覆盖手机端纯解析/绘制 CPU、连续浏览器进程峰值、其他路由及完整 Charts
+矩阵的服务端总负载。低端机专项由用户取消；G0/G2 浏览器闸门按用户确认只需
+Chrome。人工读屏与 Safari 可在另有需求时补验，不误写成已通过。
+G4 仍须验证 v2 批量摘要、统一轴口径、最多 500 链路的按需实例/缓存/像素
+上限、30/60 分钟多实例测试；G5 还须受控发布、至少 24 小时观察与回滚演练。
 
 ## 剩余计划（保留验收依赖）
 
 | 阶段 | 下一步 | 当前状态 |
 | --- | --- | --- |
-| P2 / G2 | 读屏、Firefox/Safari、实际缩放及长期生产观察 | 主页面已上线；一台 Android Chrome 实机、Chrome/WebKit、合成与公网真实 PNG 已验证；低端机要求由用户取消 |
-| P3 / G3 | 公网同场景完整成本与 60 分钟稳定性 | 独立试用页已上线；高 DPR 实机 100 次重复提交、序列传输、单链路 30 分钟实验室长测及公网功能已验证 |
+| P2 / G2 | 后续仅保留可选读屏复核与长期生产观察 | 2026-09-28 Caddy 恢复后，Chrome 公网节点/资源/真实图表、外部双栈标签、Fixed 多选、键盘及用户设置的真实浏览器级 200% 缩放复核通过；720×384、DPR 3 下无横向溢出，Results/Charts 卡片正常，G0/G2 Chrome 闸门通过。200% 下侧栏列表可视高度较短但可独立滚动，列为后续 UI 打磨观察项；低端机与 Firefox/Safari 均非当前门槛 |
+| P3 / G3 | 后续保留可选的更多路由/设备诊断 | 单链路 G3 通过：固定 RRD 正确性、Android Chrome、高 DPR、公网 v2/PNG 成本、30 次新版公网 Chrome、60 分钟原生命周期及 10 分钟最终构建稳定性均有记录；不外推到全矩阵 |
 | P4 / G4 | v2 批量摘要、全矩阵统一轴、有限可视实例、像素/缓存总预算、全矩阵 30/60 分钟测试 | 未迁移；不把单实例上限冒充已完成 |
 | P5 / G5 | 依据证据决定是否切默认；24–48h 观察和回滚验证 | 兼容 API/独立试用已部署；默认迁移、长期观察和回滚演练未完成 |
 
-下一次应继续关闭 G3 缺口，而不是直接将 Canvas 接入所有卡片。当前上线制品
-包含 P2 主页面及隔离的 P3 试用页，不能误作“主页面已切换 Canvas”。
+下一阶段可开始 P4 的有界 v2 摘要和完整 Charts 设计/实现，但先完成 G4 才能
+进入 P5 默认迁移。当前上线制品仍是 P2 主页面及隔离的 P3 试用页，不能误作
+“主页面已切换 Canvas”。
 
 ## 复现与制品
 
@@ -152,10 +211,16 @@ PYTHON=python BROWSER_CHANNEL=chrome node tests/chart-trial-browser.cjs
 python tests/run-series-lab.py root@HOST PORT
 REAL_RRD_FIXTURE=1 BROWSER_CHANNEL=chrome node tests/chart-trial-browser.cjs
 REAL_RRD_FIXTURE=1 GZIP_FIXTURE=1 SKIP_SCREENSHOTS=1 BROWSER_CHANNEL=chrome node tests/chart-trial-browser.cjs
+REAL_RRD_FIXTURE=1 GZIP_FIXTURE=1 SKIP_SCREENSHOTS=1 BROWSER_CHANNEL=chrome SOAK_MINUTES=60 node tests/chart-trial-browser.cjs
+REAL_RRD_FIXTURE=1 GZIP_FIXTURE=1 SKIP_SCREENSHOTS=1 BROWSER_CHANNEL=chrome SOAK_MINUTES=10 SOAK_MEMORY=1 TEST_OUTPUT_TAG=g3-final node tests/chart-trial-browser.cjs
+G3_PNG_WIDTH=1280 G3_PNG_HEIGHT=280 node tests/g3-public-compare.cjs
+G3_MODE=switch G3_ROUNDS=30 node tests/g3-browser-cost.cjs
 ANDROID_CYCLES=100 node tests/android-device.cjs
 ```
 
 PowerShell 用 `$env:` 设置变量，Playwright 所在目录通过 NODE_PATH 提供。
+两条 `g3-*` 脚本会对公开生产站点发起低频只读请求，不能放进普通 CI；
+复跑前应确认站点可承载且获得生产测试授权。
 Android 脚本还要求设备授权、Chrome 已启动、合成 fixture 已生成，并事先由测试者
 确认端口未被他人占用后建立
 `adb -s SERIAL forward tcp:9222 localabstract:chrome_devtools_remote`。

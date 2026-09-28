@@ -10,9 +10,25 @@ curl -i http://127.0.0.1:8082/healthz
 ss -lntp | grep 8082
 ```
 
-If the API is healthy but the public page is not, inspect the actual reverse
-proxy or tunnel that owns the public route. A local Caddy configuration may not
-be the component serving the hostname.
+If the API is healthy but the public page returns Cloudflare 521 or a placeholder
+page, check the local Caddy service and its effective configuration. The
+production Caddyfile belongs at `/etc/caddy/Caddyfile`; the master template is
+`deploy/caddy/Caddyfile.master.example`. The certificate and key must be
+readable by the `caddy` service account, and Caddy must listen on 443:
+
+```bash
+systemctl status caddy --no-pager
+systemctl cat caddy
+caddy validate --config /etc/caddy/Caddyfile
+ss -lntp | grep -E ':(80|443)\b'
+journalctl -u caddy -b --no-pager -n 100
+curl --fail http://127.0.0.1:8082/healthz
+```
+
+Do not stop at an active `caddy.service`: verify its Caddyfile contains the
+public site route and HTTPS listener. A distro-default Caddyfile may serve its
+placeholder page on port 80 while leaving the production HTTPS hostname
+unconfigured.
 
 ## Nodes do not load
 

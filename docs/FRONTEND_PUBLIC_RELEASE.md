@@ -217,10 +217,80 @@ SHA-256 `61cd7f81427bb5e1e0f687fe84e39cea254d08562ca6f720d35b5e95ce0a110f`，开
 不能将该结果表述成“公网零 CSP 事件”，也不能据此证明所有浏览器/运营商链路
 均无问题。
 
-## 尚未关闭
+## 2026-09-28 验收与后续
 
-G2 的 Firefox/Safari、屏幕阅读器、真实浏览器缩放与长期生产观察；G3 的
-公网同场景完整成本比较、60 分钟与多实例稳定性；G4 全矩阵 Canvas 资源上限；
-G5 默认迁移、24–48 小时观察及回滚演练仍未完成。现在的发布是隔离试用，
-不是整个 P2–P5 升级计划的完成证明，也不宣称手机 CPU/内存或公网延迟已有
-确定百分比的改善。
+### 2026-09-28 G0/G2 Chrome 复验
+
+按用户确认，G0/G2 的浏览器验收只要求 Chrome，Firefox/Safari 不再作为这两阶段
+的通过条件。Windows Chrome 153.0.8010.53 对最新构建版通过 17 组浏览器回归，
+axe WCAG 2.0–2.2 A/AA 自动审计 0 项违规；Python 72 项与 Node 4 项通过。
+本地回归的 API 使用模拟数据，不代表公网生产数据。
+
+当日 01:05:17、01:09:02 UTC 的 Chrome 公网访问曾返回 Cloudflare 521。
+根因是主控机重启后 Caddy 加载了发行版默认配置，而生产站点配置仍在
+`/root/smokeping/Caddyfile`，Caddy 服务账户无法读取。现已将生产配置和受限权限
+证书安装到 `/etc/caddy`，为 Caddy 增加启动前校验与失败重启 drop-in；旧配置备份在
+`/root/smokeping/Caddyfile.before-recovery-20260928`。主机未再次重启。API、Docker、
+Caddy enabled/active，SmokePing 容器持续运行；本机 HTTPS 反代健康检查和 Chrome
+公网页面均已恢复。
+
+2026-09-28 09:30–09:39 UTC+08 的真实 Chrome 扩展标签验收：生产清单加载为 15 个
+VPS 节点、6 个外部目标；DataWave Akari DE、Polo DE、YXVM JP Vol 未重现。新 HTML
+使用 `request-state.3ae7845d62246ad7.js`、`ui-components.78740c2f538b47f9.js`、
+`app.e036d7b6d2eaa8be.js`、`styles.12df13fdd1e91a31.css`；主页面未载入 Canvas/uPlot
+运行时。Halo Akari JP → Google DNS 的结果卡显示 Ext+v4、Ext+v6，当前值、统计和
+单位正常；对应 4 张生产 PNG 均加载成功，原图为 1980×750，Chrome 控制台 error 为 0。
+两个 Fixed 节点加一个非 Fixed 外部目标得到 4 条链路，仅有两个 Fixed 各自到 Google
+DNS 的 v4/v6 结果，不产生 Fixed↔Fixed 结果。Space 键可选中/取消节点；All/Ext/v6
+筛选、Results/Charts、统一纵轴、1h 查询与恢复 3h、未应用状态均已核验。当前视口
+1380×687、DPR 1.5，文档宽度等于视口，无横向溢出。
+
+2026-09-28 09:42–09:47 UTC+08，用户将真实 Chrome 缩放调至 200% 后完成最后复核：
+布局视口为 720×384、DPR 3（100% 基线为 1380×687、DPR 1.5）。Results 与 Charts
+模式下 4 条 Ext v4/v6 结果均可见，指标未横向挤出；4 张生产 PNG 均加载（缩放视口
+图像为 1532×630），文档/主内容宽度均不超过视口。侧栏移动抽屉全宽显示，节点清单
+在自身滚动区内可滚动，筛选、模式、提交和结果状态控件均可达。验收后恢复原 Charts
+模式、固定节点与筛选状态；控制台没有 error。
+
+因此 G0 公网验收与 G2 Chrome 验收通过。200% 下侧栏清单的可视高度较短（60px），
+但列表可独立纵向滚动，记录为后续 UI 打磨观察项。当前直接打开旧 `/static/app.js`
+被 Chrome 本地标记为 `ERR_BLOCKED_BY_CLIENT`，本次未重验该旧资源路径；此前公网检查
+曾确认旧路径可访问，当前客户端拦截不代表源站 404。人工读屏复核未做（若仍要求）。
+
+随后补完的单链路 G3 成本与稳定性见下节和 [P3 报告](FRONTEND_P3_REPORT.md)。
+G4 全矩阵 Canvas 资源上限、G5 默认迁移、24–48 小时观察及回滚演练仍未完成。
+该记录不代表整个 P2–P5 升级计划完成，也不宣称手机 CPU/内存或全站公网延迟
+已有确定百分比的改善。
+
+## 2026-09-28 G3 试用页 PNG 新鲜度修复
+
+试用页重复提交后切到 PNG 对照时，浏览器可复用带长缓存头的旧 PNG。现每次提交
+生成不同的 `refresh` 令牌，同一快照内 Canvas/PNG 往返沿用同一令牌。仅修改
+`web/chart-trial.js` 的指纹资源和引用它的试用页 HTML；主页面 HTML SHA-256
+仍为 `3617d0cf04b62daf4a00fc6eca7ce454190f6ec9e04b253f18276db4932d0bdf`，
+主页面默认 PNG 路径未改变。
+
+本地构建验证 8 项指纹资源；Python 74 项、主页面 Chrome 17 组浏览器回归、
+试用页 Chrome 合成 RRD/压缩传输回归均通过。发布包 SHA-256
+`f0b92bd4e8abaa0d3dfacf18f2129fb254b46e435503500a6858c293290f0104`，
+主控 staging `/root/ipppping-stage-g3-CNwvsCAi` 校验一致。安装器于
+02:34 UTC 成功发布并创建备份 `/root/ipppping-backup-20260928T023452206618Z`。
+新试用页 HTML SHA-256 为
+`04be375071b426c6cc9622fd5702c84cc8a790776713ed420b3e52f0b74af76b`，
+新 JS 为 `chart-trial.ede65ab7e5d7ab13.js`；主控文件哈希与本地清单一致。
+安装器健康检查通过，随后复查 API、Caddy、Docker 均 active，`/healthz`
+返回 `ok`。历史资产与旧浏览器标签页所需文件未删除。公网 Chrome 30 次重复
+提交得到 30 个不同 PNG 刷新令牌、30 次 HTTP 200，无页面异常；成本数字和边界
+见 [P3 报告](FRONTEND_P3_REPORT.md)。
+
+另修正只读 RRD 新鲜度定时检查：仅对 API 节点配置中的 14 台有效 slave 进行
+核验，保留 SSH 库存中 3 台已退役机器的节点名/端口记录，不再把它们的旧 RRD
+误判为现役故障；现役节点若缺库存行仍判失败。生产脚本先候选试跑、再备份旧版至
+`/opt/ipppping/check_freshness.py.before-g3-20260928` 并安装；手动与下一次定时
+执行均成功，39 项探测为 `ok`，未更改 RRD、库存或采样服务。
+
+同日隔离 Chrome 长测完成 3,605 秒、676 次循环，GC 后 DOM 976、监听器 54
+不变；启动后预热两分钟至结束的 JS 堆增长 475,344 B。改动后的最终构建另通过
+10 分钟/112 次循环与进程内存抽样，未见持续增长。结合固定 RRD 正确性、既有
+Android Chrome 实机操作及同路由公网成本，**单链路 G3 闸门通过**。此结论
+只允许开始 P4 的有界研发；主页面仍使用 PNG，不表示 G4/G5 已通过。

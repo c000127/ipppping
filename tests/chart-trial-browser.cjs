@@ -8,7 +8,10 @@ const { execFileSync } = require('node:child_process');
 const engine = process.env.BROWSER_ENGINE || 'chromium';
 const browserType = require('playwright')[engine];
 const root = path.resolve(__dirname, '..');
-const out = path.join(root, `test-results/p3-${engine}`); fs.mkdirSync(out, { recursive: true });
+const outputTag = process.env.TEST_OUTPUT_TAG || '';
+assert.match(outputTag, /^[a-z0-9-]*$/);
+const out = path.join(root, `test-results/p3-${engine}${outputTag ? '-' + outputTag : ''}`);
+fs.mkdirSync(out, { recursive: true });
 const fixture = process.env.REAL_RRD_FIXTURE
   ? JSON.parse(fs.readFileSync(path.join(root, 'test-results/p3/rrd-24h-columns.json'), 'utf8'))
   : JSON.parse(execFileSync(process.env.PYTHON || 'python', ['-c', `import json,time
@@ -24,6 +27,21 @@ print(json.dumps(response(snapshot(fixture(values,start=end-86400),latest,end-86
 async function waitFor(page, predicate) {
   const handle = await page.waitForFunction(predicate);
   await handle.dispose();
+}
+async function chromeProcessMemory(session) {
+  if (!session || process.platform !== 'win32') return null;
+  const info = await session.send('SystemInfo.getProcessInfo');
+  const ids = info.processInfo.map(item => item.id).filter(id => Number.isInteger(id) && id > 0);
+  if (!ids.length) return null;
+  const script = `$ids=@(${ids.join(',')}); Get-Process -Id $ids -ErrorAction SilentlyContinue | `
+    + 'Select-Object Id,PrivateMemorySize64 | ConvertTo-Json -Compress';
+  const rows = JSON.parse(execFileSync('powershell.exe', ['-NoProfile', '-Command', script],
+    { encoding: 'utf8', timeout: 10000 }).trim());
+  const list = Array.isArray(rows) ? rows : [rows];
+  const types = new Map(info.processInfo.map(item => [item.id, item.type]));
+  return { totalPrivateBytes: list.reduce((sum, item) => sum + item.PrivateMemorySize64, 0),
+    gpuPrivateBytes: list.filter(item => types.get(item.Id) === 'GPU')
+      .reduce((sum, item) => sum + item.PrivateMemorySize64, 0) };
 }
 const nodes = [{ id: 'src', label: 'Source VPS', group: 'vps', v4: true, v6: true }, { id: 'ext', label: 'External Target', group: 'dns', v4: true, v6: true }];
 let scenario = 'normal', requests = [], active = 0, peak = 0;
@@ -148,10 +166,19 @@ const server = http.createServer(async (req, res) => {
     report.globalListeners = await page.evaluate(() => Object.fromEntries([...new Set(globalListeners.map(x => x.type))].map(type => [type, globalListeners.filter(x => x.type === type).length])));
     await page.locator('#png-mode').click(); await page.locator('#plot img').waitFor();
     assert.equal(await page.locator('canvas').count(), 0);
+    const firstPngRefresh = new URL(await page.locator('#plot img').getAttribute('src'), url).searchParams.get('refresh');
+    assert.ok(firstPngRefresh);
     if (process.env.REAL_RRD_FIXTURE && !process.env.SKIP_SCREENSHOTS)
       await page.screenshot({ path: path.join(out, 'png-comparison.png') });
     await page.locator('#canvas-mode').click(); await page.locator('canvas').waitFor();
-    report.cases.push('explicit PNG fallback / canvas destruction');
+    await page.locator('#png-mode').click(); await page.locator('#plot img').waitFor();
+    assert.equal(new URL(await page.locator('#plot img').getAttribute('src'), url).searchParams.get('refresh'), firstPngRefresh);
+    await page.locator('#canvas-mode').click(); await page.locator('canvas').waitFor();
+    await page.locator('#load').click(); await waitFor(page, () => ChartTrial.snapshot && ChartTrial.instanceCount === 1);
+    await page.locator('#png-mode').click(); await page.locator('#plot img').waitFor();
+    assert.notEqual(new URL(await page.locator('#plot img').getAttribute('src'), url).searchParams.get('refresh'), firstPngRefresh);
+    await page.locator('#canvas-mode').click(); await page.locator('canvas').waitFor();
+    report.cases.push('explicit PNG fallback / canvas destruction / per-submit refresh token');
     scenario = 'busy'; requests = [];
     await page.locator('#load').click(); await waitFor(page, () => document.getElementById('status').textContent.includes('HTTP 503'));
     await page.waitForTimeout(300);
@@ -206,6 +233,7 @@ const server = http.createServer(async (req, res) => {
       if (!(minutes > 0 && minutes <= 60) || engine !== 'chromium') throw Error('Soak requires Chromium, 0 < minutes <= 60');
       const cdp = await page.context().newCDPSession(page);
       await cdp.send('Performance.enable');
+      const browserCdp = process.env.SOAK_MEMORY ? await browser.newBrowserCDPSession() : null;
       report.soak = { requestedMinutes: minutes, checkpoints: [], cycles: 0 };
       const start = Date.now(); let nextCheckpoint = 0;
       while (Date.now() - start < minutes * 60000) {
@@ -221,6 +249,7 @@ const server = http.createServer(async (req, res) => {
           await cdp.send('HeapProfiler.collectGarbage');
           const metrics = await cdp.send('Performance.getMetrics');
           const point = { seconds: Math.round((Date.now() - start) / 1000), ...Object.fromEntries(metrics.metrics.filter(m => ['JSHeapUsedSize','Nodes','Documents','JSEventListeners'].includes(m.name)).map(m => [m.name,m.value])) };
+          if (browserCdp) point.processMemory = await chromeProcessMemory(browserCdp);
           report.soak.checkpoints.push(point);
           console.log('soak checkpoint', JSON.stringify(point));
           nextCheckpoint += 60000;

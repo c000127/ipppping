@@ -1,0 +1,19 @@
+pppping.hachimihaqile.top {
+    tls /etc/caddy/cloudflare-origin.crt /etc/caddy/cloudflare-origin.key
+
+    @slave_upload {
+        method POST
+        path /smokeping/ /smokeping/smokeping.cgi
+    }
+    handle @slave_upload {
+        reverse_proxy 127.0.0.1:8080
+    }
+    handle {
+        respond "Not Found" 404
+    }
+}
+
+ipppping.hachimihaqile.top {
+    tls /etc/caddy/cloudflare-origin.crt /etc/caddy/cloudflare-origin.key
+    reverse_proxy 127.0.0.1:8082
+}

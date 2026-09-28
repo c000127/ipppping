@@ -4,6 +4,7 @@ const ChartTrial = (() => {
   const $ = id => document.getElementById(id);
   const pool = new RequestState.Pool(4);
   let generation = 0, controller = null, chart = null, snapshot = null, applied = null;
+  let pngRefreshToken = '';
   let mode = 'canvas', page = 0, frame = 0;
   const time = stamp => new Date(stamp * 1000).toLocaleString('en-GB', { timeZone: 'Asia/Shanghai', hour12: false });
   const value = number => Number.isFinite(number) ? number.toFixed(2) : '—';
@@ -147,6 +148,7 @@ const ChartTrial = (() => {
         img.alt = 'Legacy PNG comparison; v2 interval values are provided below';
         const params = new URLSearchParams({ ...applied, w: String(Math.max(280, Math.min(1280, $('plot').clientWidth))), h: '280', theme: 'dark' });
         params.delete('points'); params.delete('end');
+        params.set('refresh', pngRefreshToken);
         img.src = '/api/graph.png?' + params;
       }), signal);
     } catch (error) { if (token === generation && error.name !== 'AbortError') $('status').textContent = error.message; }
@@ -154,6 +156,7 @@ const ChartTrial = (() => {
   async function submit(event) {
     event.preventDefault();
     controller?.abort(); controller = new AbortController(); const token = ++generation;
+    pngRefreshToken = `${Date.now().toString(36)}-${token}`;
     dispose(); snapshot = null; $('summary').replaceChildren(); $('rows').replaceChildren(); $('cursor').disabled = true;
     $('status').textContent = 'Loading a new snapshot…';
     applied = { source: $('source').value, target: $('target').value, type: $('protocol').value, dur: $('duration').value, points: $('points').value, encoding: 'columns' };

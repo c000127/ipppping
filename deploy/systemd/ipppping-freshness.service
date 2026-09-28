@@ -3,6 +3,7 @@ Description=Check end-to-end SmokePing slave RRD freshness
 
 [Service]
 Type=oneshot
+Environment=IPPPING_NODES_CONFIG=/opt/ipppping/config/nodes.local.json
 ExecStart=/usr/bin/python3 /opt/ipppping/check_freshness.py
 NoNewPrivileges=true
 ProtectSystem=strict

@@ -7,8 +7,10 @@ systemctl is-active ipppping.service
 systemctl status ipppping.service --no-pager
 journalctl -u ipppping.service -n 100 --no-pager
 curl --fail http://127.0.0.1:8082/healthz
-docker compose -f /srv/smokeping/docker-compose.yml ps
-docker compose -f /srv/smokeping/docker-compose.yml logs --tail=50 smokeping
+docker compose -f /root/smokeping/docker-compose.yml ps
+docker compose -f /root/smokeping/docker-compose.yml logs --tail=50 smokeping
+systemctl is-active caddy docker
+ss -lntp | grep -E ':(80|443|8080|8082)\b'
 ```
 
 Inspect RRD freshness without copying the data into Git:
@@ -77,3 +79,24 @@ Never make secrets part of the application archive. To recover, restore the
 collector config and RRD tree first, then install the API and point
 `IPPPING_DATA_DIR` at the restored export. Validate with `rrdtool info` and the
 health/API checks before re-enabling public traffic.
+
+## Reboot recovery check
+
+After a host reboot, verify that the API, Docker, SmokePing container, and Caddy
+all returned without manual intervention:
+
+```bash
+systemctl is-enabled ipppping.service docker caddy
+systemctl is-active ipppping.service docker caddy
+curl --fail http://127.0.0.1:8082/healthz
+docker compose -f /root/smokeping/docker-compose.yml ps
+caddy validate --config /etc/caddy/Caddyfile
+ss -lntp | grep -E ':(80|443)\b'
+curl --fail https://ipppping.hachimihaqile.top/healthz
+```
+
+The master SmokePing container uses Docker's `unless-stopped` restart policy.
+The API and Docker services are enabled at boot; Caddy is enabled and has a
+systemd drop-in that validates its config before start and restarts it after an
+unexpected failure. A healthy API alone does not prove the public route is up:
+also check Caddy's HTTPS listener and the hostname through the public edge.

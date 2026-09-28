@@ -49,12 +49,18 @@ cooldown lives in `/run` and resets on host reboot. Network/upload failures are
 not treated as permission to repeatedly restart otherwise healthy probes.
 
 `check_freshness.py` separately checks one canonical RRD for each configured
-probe family on every inventory slave. Missing files or samples older than
-600 seconds fail the check; 100% packet loss is still a valid measurement.
+probe family on every active slave in the API node configuration. Retired rows
+may remain in the SSH inventory without triggering stale-data failures; an
+active slave missing from that inventory fails the check. The master node is
+excluded because it has no slave-suffixed RRD. Missing files or samples older
+than 600 seconds fail the check; 100% packet loss is still a valid measurement.
 This is representative per-probe coverage, not a guarantee that every target
 or every external-v6 RRD is fresh. `/healthz` remains API liveness only.
 `ipppping-freshness.timer` runs this read-only end-to-end check every five minutes;
-failures are visible in the service status/journal, without external alerts.
+set `IPPPING_NODES_CONFIG` in its service unit to the same active node file used
+by `ipppping.service` (`nodes.local.json` in the generic example, `nodes.json`
+on the current production master). Failures are visible in the service
+status/journal, without external alerts.
 
 When changing master targets/probes, validate first, then advance the mtime of
 the main configuration file used by CGI (`/etc/smokeping/config` in this image).

@@ -160,6 +160,21 @@ intended only for probing must not expose an unexpected HTTP listener.
 
 ## Reverse proxy
 
+For the production master, use `deploy/caddy/Caddyfile.master.example`. Install
+it as `/etc/caddy/Caddyfile`, and install the origin certificate and private
+key as `/etc/caddy/cloudflare-origin.crt` and
+`/etc/caddy/cloudflare-origin.key`. Keep both credentials out of the repository;
+make them readable by the `caddy` group only (for example, owner `root`, group
+`caddy`, mode `0640`). The Caddyfile should use the same owner/group and mode.
+The example routes the public site to the loopback API and permits only the
+SmokePing upload endpoints on the collector hostname.
+
+Install `deploy/systemd/caddy.service.d/10-recovery.conf` as
+`/etc/systemd/system/caddy.service.d/10-recovery.conf`. It validates the
+Caddyfile before start and restarts Caddy after an unexpected failure. Save the
+existing Caddyfile before replacing it, validate before reload, and do not reboot
+the host merely to apply this configuration.
+
 Use `deploy/caddy/Caddyfile.example` as a starting point:
 
 ```text
@@ -177,11 +192,8 @@ systemctl reload caddy
 curl --fail https://monitor.example.invalid/healthz
 ```
 
-At the time of the repository inventory, the API service was active on a
-loopback listener, while the visible local Caddy service configuration did not
-contain an ipPping site block. Treat proxy routing as an environment-specific
-dependency and confirm which Caddy instance, tunnel, or upstream owns the
-public route before changing it.
+For a generic deployment, replace the example site address with the real value
+in the host's private Caddy configuration.
 
 ## Release checklist
 

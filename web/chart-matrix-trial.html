@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ipPping · Matrix chart trial</title>
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/static/vendor/uplot.css">
+<link rel="stylesheet" href="/static/chart-matrix-trial.css">
+<body class="matrix-trial">
+<main>
+  <a href="/">Back to production matrix (PNG default)</a>
+  <h1>Matrix chart trial</h1>
+  <p>This opt-in P4 trial builds a complete, frozen v2 summary before drawing. It does not change the main Charts renderer, prefetch hidden series or auto-refresh.</p>
+  <form id="query">
+    <div id="nodes" class="node-list" role="group" aria-label="Select nodes and optional Fixed nodes"></div>
+    <div class="trial-controls">
+      <label>Window <select id="duration"><option value="3600">1h</option><option value="10800" selected>3h</option><option value="21600">6h</option><option value="86400">24h</option></select></label>
+      <label>Y axis <select id="axis"><option value="unified" selected>Unified across all routes</option><option value="independent">Independent per route</option></select></label>
+      <button id="load" type="submit" disabled>Build trial matrix</button>
+    </div>
+  </form>
+  <p id="status" role="status">Loading node list…</p>
+  <p id="scope">No matrix loaded.</p>
+  <div id="grid" class="matrix-grid" aria-live="off"></div>
+</main>
+<script src="/static/request-state.js" defer></script>
+<script src="/static/matrix-data.js" defer></script>
+<script src="/static/vendor/uplot.js" defer></script>
+<script src="/static/chart-matrix-trial.js" defer></script>
+</body>
+</html>

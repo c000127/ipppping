@@ -71,6 +71,7 @@ class WebReleaseTests(unittest.TestCase):
         self.assertEqual((self.target / 'web/index.html').read_bytes(), b'old HTML')
         self.assertEqual((self.target / 'server.py').read_bytes(), b'old runtime')
         self.assertEqual((self.target / 'web/app.js').read_bytes(), b'legacy JS')
+        self.assertFalse((self.target / 'web/chart-matrix-trial.html').exists())
 
     def test_immutable_collision_rejected(self):
         dest = self.target / 'web/assets'
@@ -96,11 +97,13 @@ class WebReleaseTests(unittest.TestCase):
                     with urllib.request.urlopen(base + '/static/assets/' + name) as response:
                         self.assertIn('immutable', response.headers['Cache-Control'])
                         self.assertEqual(response.read(), (self.release / 'assets' / name).read_bytes())
-                for path in ('/', '/static/app.js', '/chart-trial'):
+                for path in ('/', '/static/app.js', '/chart-trial', '/chart-matrix-trial'):
                     with urllib.request.urlopen(base + path) as response:
                         self.assertIn('no-cache', response.headers['Cache-Control'])
                         if path == '/chart-trial':
                             self.assertEqual(response.read(), (self.release / 'chart-trial.html').read_bytes())
+                        if path == '/chart-matrix-trial':
+                            self.assertEqual(response.read(), (self.release / 'chart-matrix-trial.html').read_bytes())
             finally:
                 httpd.shutdown()
                 httpd.server_close()

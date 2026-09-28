@@ -1,0 +1,32 @@
+.matrix-trial { height: auto; overflow: auto; }
+.matrix-trial main { max-width: 1460px; margin: auto; padding: 20px; }
+.matrix-trial h1 { font-size: 22px; color: var(--text); }
+.matrix-trial p, .matrix-trial h1, .matrix-trial form { margin-block: 14px; }
+.matrix-trial a { color: var(--accent2); }
+.matrix-trial button, .matrix-trial select { min-height: 40px; padding: 4px 10px; }
+.matrix-trial button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+.node-list { display: flex; flex-wrap: wrap; gap: 7px; max-height: 300px; overflow-y: auto; padding-block: 5px; }
+.node-choice { display: flex; border-radius: var(--control-radius); background: var(--bg-panel); }
+.node-choice button { border-radius: 0; }
+.node-choice button:first-child { border-radius: var(--control-radius) 0 0 var(--control-radius); }
+.node-choice button:last-child { border-radius: 0 var(--control-radius) var(--control-radius) 0; }
+.node-choice .fixed { border-left: 1px solid var(--border); }
+.node-choice .fixed:disabled { opacity: .45; }
+.trial-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.trial-controls label { display: flex; flex-direction: column; gap: 5px; }
+.trial-controls select { background: var(--bg-hover); color: var(--text); border: 0; border-radius: var(--control-radius); }
+.matrix-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 12px; }
+.matrix-card { min-width: 0; min-height: 335px; padding: 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); }
+.matrix-card h2 { font-size: 15px; color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
+.matrix-card .badges { display: flex; gap: 6px; margin-top: 6px; }
+.matrix-card .badge { color: var(--text); background: var(--bg-hover); border-radius: 3px; padding: 2px 6px; font-size: 12px; }
+.matrix-card dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.matrix-card dt { font-size: 11px; color: var(--text-sec); }
+.matrix-card dd { color: var(--text); font-size: 14px; overflow-wrap: anywhere; }
+.matrix-card .plot { height: 220px; width: 100%; margin-top: 10px; overflow: hidden; }
+.matrix-card .plot:empty::before { content: 'Chart loads when visible'; color: var(--text-dim); }
+.matrix-card .plot[aria-busy="true"]::before { content: 'Loading visible series…'; color: var(--text-dim); }
+.matrix-card .plot:not(:empty)::before { content: none; }
+.matrix-card .problem { color: var(--warning); }
+#status, #scope { overflow-wrap: anywhere; }
+@media (max-width: 600px) { .matrix-trial main { padding: 12px; } .matrix-card dl { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

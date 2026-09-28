@@ -5,8 +5,9 @@ from pathlib import Path
 import re
 
 ASSETS = ('styles.css', 'request-state.js', 'ui-components.js', 'app.js',
-          'chart-trial.css', 'chart-trial.js', 'vendor/uplot.js', 'vendor/uplot.css')
-PAGES = ('index.html', 'chart-trial.html')
+          'chart-trial.css', 'chart-trial.js', 'chart-matrix-trial.css',
+          'matrix-data.js', 'chart-matrix-trial.js', 'vendor/uplot.js', 'vendor/uplot.css')
+PAGES = ('index.html', 'chart-trial.html', 'chart-matrix-trial.html')
 VENDOR_HASHES = {
     'vendor/uplot.js': '19c8d4c6ad88929a79f4ae49d6f7161566dfd0ba3d15cc495e974f787eb78f1f',
     'vendor/uplot.css': '0cf09be05fa0760ca9a3330ea374f6655f08766c7b2b370e462afe98852147ce',

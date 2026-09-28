@@ -44,9 +44,15 @@ to four), shared with legacy stats-batch. Gzip is negotiated with
 `Cache-Control: no-store` prevents a browser from silently reusing a partial
 matrix. A busy page returns 503 with `Retry-After: 2`. Raw RRD snapshots share
 the existing bounded stats cache; this endpoint creates no independent cache.
-The frontend must not request all pages in parallel or draw a changing unified
-axis before the complete selection has been accounted for. Full-matrix load and
-memory budgets remain G4 work.
+The opt-in `/chart-matrix-trial` frontend requests pages sequentially. Its first
+page may omit `end` and accept the server's completed-minute value; every later
+summary page and visible series request explicitly reuses that value. It checks
+`selection_id`, `total`, page order, route identity and window before drawing.
+Only after all summaries arrive does it freeze the unified Y axis. At most four
+visible Canvas instances and two series requests run at once; the series cache
+is limited to eight entries / 2 MiB. This trial is not deployed or linked from
+the production main page. Full-matrix real-RRD load and long-duration budgets
+remain G4 work.
 
 ## Parameters and errors
 

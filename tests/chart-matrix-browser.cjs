@@ -1,0 +1,188 @@
+/* P4 opt-in matrix lab. A mock transport makes near-cap UI bounds repeatable. */
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const http = require('node:http');
+const { chromium } = require('playwright');
+const root = path.resolve(__dirname, '..');
+const nodes = Array.from({ length: 16 }, (_, i) => ({ id: `v${i}`, label: `VPS ${i}`, group: 'vps', v4: true, v6: true }));
+nodes.push({ id: 'ext', label: 'External', group: 'dns', v4: true, v6: true });
+const requests = [];
+let lastRoutes = [];
+function pairs(query) {
+  const chosen = nodes.filter(node => query.get('nodes').split(',').includes(node.id));
+  const fixed = new Set((query.get('anchor') || '').split(',').filter(Boolean));
+  const combinations = [];
+  for (let i = 0; i < chosen.length; i++) for (let j = i + 1; j < chosen.length; j++) {
+    if (fixed.size && (!fixed.has(chosen[i].id) || fixed.has(chosen[j].id))) continue;
+    combinations.push([chosen[i], chosen[j]]);
+  }
+  return combinations.flatMap(([a, b]) => {
+    if (a.group === 'dns' || b.group === 'dns') {
+      const source = a.group === 'dns' ? b : a, target = a.group === 'dns' ? a : b;
+      return ['v4', 'v6'].map(type => ({ source: source.id, target: target.id, type,
+        srcLabel: source.label, tgtLabel: target.label, ext: true }));
+    }
+    return [[a, b], [b, a]].flatMap(([source, target]) => ['v4', 'v6'].map(type => ({
+      source: source.id, target: target.id, type, srcLabel: source.label, tgtLabel: target.label, ext: false
+    })));
+  });
+}
+function summary(pair, end, dur, maximum) {
+  return { source: pair.source, target: pair.target, protocol: pair.type,
+    schema: 'ipppping.series.v2', snapshot_id: 'a'.repeat(24), window: { start: end - dur, end },
+    current: { current_ms: 10 }, summary: { average_ms: 10, min_median_ms: 10,
+      max_median_ms: maximum, loss_pct: 0, measurement_coverage: 1 } };
+}
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url, 'http://local'), pathname = url.pathname;
+  res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'");
+  if (pathname.startsWith('/api/')) {
+    requests.push(pathname);
+    res.setHeader('Content-Type', 'application/json');
+    if (pathname === '/api/nodes') { res.end(JSON.stringify(nodes)); return; }
+    const routes = pathname === '/api/v2/series' ? lastRoutes : pairs(url.searchParams);
+    if (pathname !== '/api/v2/series') lastRoutes = routes;
+    if (pathname === '/api/pairs') { res.end(JSON.stringify(routes)); return; }
+    const end = url.searchParams.has('end') ? Number(url.searchParams.get('end')) : Math.floor(Date.now() / 60000) * 60;
+    const dur = Number(url.searchParams.get('dur'));
+    if (pathname === '/api/v2/summary-batch') {
+      const offset = Number(url.searchParams.get('offset')), limit = Number(url.searchParams.get('limit'));
+      const items = routes.slice(offset, offset + limit).map((pair, i) => summary(pair, end, dur, offset + i + 10));
+      res.end(JSON.stringify({ schema: 'ipppping.summary-batch.v2', selection_id: 'a'.repeat(64),
+        end, dur, offset, limit, total: routes.length,
+        next_offset: offset + items.length < routes.length ? offset + items.length : null, items })); return;
+    }
+    if (pathname === '/api/v2/series') {
+      const pair = { source: url.searchParams.get('source'), target: url.searchParams.get('target'), type: url.searchParams.get('type') };
+      const index = routes.findIndex(value => value.source === pair.source && value.target === pair.target && value.type === pair.type);
+      const data = summary(pair, end, dur, index + 10);
+      const start = end - dur;
+      data.encoding = 'columns-v1';
+      data.columns = { start: [start, start + dur / 2], end: [start + dur / 2, end],
+        count: [1, 1], median_mean_ms: [10, 10], min_median_ms: [10, 10], max_median_ms: [10, 10],
+        loss_mean_pct: [0, 0], loss_max_pct: [0, 0], loss_event_count: [0, 0],
+        full_loss_count: [0, 0], missing_latency_count: [0, 0], missing_measurement_count: [0, 0] };
+      res.end(JSON.stringify(data)); return;
+    }
+    res.writeHead(404).end(); return;
+  }
+  const relative = pathname === '/chart-matrix-trial' ? 'build/web-release/chart-matrix-trial.html'
+    : pathname.startsWith('/static/assets/') ? 'build/web-release/assets/' + path.basename(pathname)
+    : pathname.startsWith('/static/fonts/') ? 'web/fonts/' + path.basename(pathname) : null;
+  if (!relative) { res.writeHead(404).end(); return; }
+  try {
+    res.setHeader('Content-Type', relative.endsWith('.js') ? 'text/javascript' : relative.endsWith('.css') ? 'text/css' : relative.endsWith('.html') ? 'text/html' : 'font/woff2');
+    res.end(fs.readFileSync(path.join(root, relative)));
+  } catch { res.writeHead(404).end(); }
+});
+
+(async () => {
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const browser = await chromium.launch({ headless: true, ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}) });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const errors = []; page.on('pageerror', error => errors.push(error.message));
+    if (process.env.RUN_AXE) await page.addInitScript({ path: path.join(root, 'build/qa-deps/package/axe.min.js') });
+    await page.goto(`http://127.0.0.1:${server.address().port}/chart-matrix-trial`);
+    await page.locator('#load').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => !document.getElementById('load').disabled);
+    assert.equal(requests.filter(route => route !== '/api/nodes').length, 0);
+    for (const id of ['v0', 'v1', 'ext']) await page.locator(`#nodes [data-id="${id}"] .choose`).click();
+    for (const id of ['v0', 'v1']) await page.locator(`#nodes [data-id="${id}"] .fixed`).click();
+    await page.locator('#load').click();
+    await page.waitForFunction(() => document.getElementById('status').textContent.startsWith('Ready: 4 routes'));
+    assert.equal(await page.locator('.matrix-card').count(), 4);
+    assert.equal(await page.locator('.matrix-card .badge').first().textContent(), 'Ext');
+    await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4));
+    if (process.env.RUN_AXE) {
+      const violations = await page.evaluate(async () => (await axe.run(document, {
+        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] }
+      })).violations.map(value => ({ id: value.id, targets: value.nodes.map(node => node.target) })));
+      assert.deepEqual(violations, []);
+    }
+    for (const width of [390, 720, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.waitForTimeout(60);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    }
+    const screenshot = path.join(root, 'test-results/p4-matrix-trial.png');
+    fs.mkdirSync(path.dirname(screenshot), { recursive: true });
+    await page.screenshot({ path: screenshot });
+    await page.locator('#axis').selectOption('independent');
+    await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    await page.locator('#axis').selectOption('unified');
+    await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    for (const id of ['v0', 'v1']) await page.locator(`#nodes [data-id="${id}"] .fixed`).click();
+    await page.locator('#nodes [data-id="ext"] .choose').click();
+    for (let i = 2; i < 16; i++) await page.locator(`#nodes [data-id="v${i}"] .choose`).click();
+    const prior = requests.length;
+    await page.locator('#load').click();
+    await page.waitForFunction(() => document.getElementById('status').textContent.startsWith('Ready: 480 routes'));
+    assert.equal(await page.locator('.matrix-card').count(), 480);
+    assert.equal(await page.evaluate(() => ChartMatrixTrial.matrix.unifiedMax), 489 * 1.1);
+    assert.equal(requests.slice(prior).filter(route => route === '/api/v2/summary-batch').length, 15);
+    await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    assert.ok(requests.slice(prior).filter(route => route === '/api/v2/series').length < 20);
+    assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.cacheCount <= 8));
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(600);
+    assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.cacheCount <= 8));
+    const soakSeconds = Number(process.env.SOAK_SECONDS || 0);
+    const samples = [];
+    if (soakSeconds > 0) {
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('Performance.enable');
+      const sample = async elapsed => {
+        await cdp.send('HeapProfiler.collectGarbage');
+        const [dom, perf, client] = await Promise.all([
+          cdp.send('Memory.getDOMCounters'), cdp.send('Performance.getMetrics'),
+          page.evaluate(() => ({ instances: ChartMatrixTrial.instanceCount, cache: ChartMatrixTrial.cacheCount,
+            cacheBytes: ChartMatrixTrial.cacheBytes, pending: ChartMatrixTrial.pendingCount,
+            canvases: document.querySelectorAll('canvas').length,
+            pixels: [...document.querySelectorAll('canvas')].reduce((sum, canvas) => sum + canvas.width * canvas.height, 0) }))
+        ]);
+        const heap = perf.metrics.find(metric => metric.name === 'JSHeapUsedSize')?.value;
+        const row = { elapsed, ...dom, heap, ...client };
+        samples.push(row);
+        assert.ok(row.instances <= 4 && row.cache <= 8 && row.cacheBytes <= 2 * 1024 * 1024);
+        assert.ok(row.pending <= 4 && row.canvases <= 4 && row.pixels <= 4 * 1280 * 220 * 4);
+      };
+      const started = Date.now();
+      let cycle = 0, previousSample = 0;
+      await sample(0);
+      while (Date.now() - started < soakSeconds * 1000) {
+        await page.evaluate(position => window.scrollTo(0, position * (document.body.scrollHeight - innerHeight)), (cycle % 3) / 2);
+        await page.waitForTimeout(2000);
+        const elapsed = Date.now() - started;
+        if (elapsed - previousSample >= 60000) { await sample(elapsed); previousSample = elapsed; }
+        cycle++;
+      }
+      await sample(Date.now() - started);
+      const target = path.join(root, 'test-results/p4-matrix-browser-soak.json');
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, JSON.stringify({ soakSeconds, cycles: cycle, samples, errors }, null, 2));
+      console.log('Soak report:', target);
+      await cdp.detach();
+    }
+    assert.equal(errors.length, 0, errors.join('\n'));
+    const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3.5 });
+    const mobileErrors = [];
+    mobile.on('pageerror', error => mobileErrors.push(error.message));
+    await mobile.goto(`http://127.0.0.1:${server.address().port}/chart-matrix-trial`);
+    await mobile.waitForFunction(() => !document.getElementById('load').disabled);
+    for (const id of ['v0', 'ext']) await mobile.locator(`#nodes [data-id="${id}"] .choose`).click();
+    await mobile.locator('#load').click();
+    await mobile.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth &&
+      [...document.querySelectorAll('canvas')].reduce((sum, canvas) => sum + canvas.width * canvas.height, 0)
+      <= ChartMatrixTrial.instanceCount * 1280 * 220 * 4));
+    assert.deepEqual(mobileErrors, []);
+    await mobile.close();
+    console.log(JSON.stringify({ routes: 480, summaryPages: 15,
+      seriesRequests: requests.filter(route => route === '/api/v2/series').length,
+      instanceCount: await page.evaluate(() => ChartMatrixTrial.instanceCount),
+      cacheCount: await page.evaluate(() => ChartMatrixTrial.cacheCount), errors }, null, 2));
+  } finally { await browser.close(); server.close(); }
+})().catch(error => { console.error(error); server.close(); process.exitCode = 1; });

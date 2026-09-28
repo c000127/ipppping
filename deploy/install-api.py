@@ -58,6 +58,8 @@ def install(source, target, backup, restart, probe):
         # Switch HTML only after the new server can serve every dependency.
         replace(release / 'chart-trial.html', target / 'web/chart-trial.html')
         probe('/chart-trial', (release / 'chart-trial.html').read_bytes())
+        replace(release / 'chart-matrix-trial.html', target / 'web/chart-matrix-trial.html')
+        probe('/chart-matrix-trial', (release / 'chart-matrix-trial.html').read_bytes())
         replace(release / 'index.html', target / 'web/index.html')
         probe('/', (release / 'index.html').read_bytes())
     except BaseException:

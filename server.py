@@ -1060,7 +1060,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
 
-        elif path in {"/static/styles.css", "/static/app.js", "/static/request-state.js", "/static/ui-components.js", "/static/chart-trial.js", "/static/chart-trial.css", "/static/vendor/uplot.js", "/static/vendor/uplot.css"} or re.fullmatch(r"/static/assets/[a-z-]+\.[0-9a-f]{16}\.(?:js|css)", path):
+        elif path in {"/static/styles.css", "/static/app.js", "/static/request-state.js", "/static/ui-components.js", "/static/chart-trial.js", "/static/chart-trial.css", "/static/chart-matrix-trial.js", "/static/chart-matrix-trial.css", "/static/matrix-data.js", "/static/vendor/uplot.js", "/static/vendor/uplot.css"} or re.fullmatch(r"/static/assets/[a-z-]+\.[0-9a-f]{16}\.(?:js|css)", path):
             filename = os.path.basename(path)
             immutable = path.startswith('/static/assets/')
             content_type = "text/css; charset=utf-8" if filename.endswith(".css") else "text/javascript; charset=utf-8"
@@ -1079,9 +1079,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
 
-        elif path in ("/", "/index.html", "/chart-trial"):
+        elif path in ("/", "/index.html", "/chart-trial", "/chart-matrix-trial"):
             try:
-                body = (WEB_DIR / ('chart-trial.html' if path == '/chart-trial' else 'index.html')).read_bytes()
+                page = {'/chart-trial': 'chart-trial.html', '/chart-matrix-trial': 'chart-matrix-trial.html'}.get(path, 'index.html')
+                body = (WEB_DIR / page).read_bytes()
             except OSError:
                 data = json_error("frontend_unavailable", "frontend assets are not installed", HTTPStatus.SERVICE_UNAVAILABLE)[0]
                 self.send_response(HTTPStatus.SERVICE_UNAVAILABLE)

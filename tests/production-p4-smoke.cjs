@@ -38,30 +38,35 @@ const expectedAppAsset = '/static/assets/app.e036d7b6d2eaa8be.js';
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     const pageResponse = await page.goto(origin + '/chart-matrix-trial');
     assert.equal(pageResponse.status(), 200);
-    await page.waitForFunction(() => !document.getElementById('load').disabled);
-    for (const id of ['akari_jp', 'google_dns']) await page.locator(`#nodes [data-id="${id}"] .choose`).click();
-    await page.locator('#load').click();
-    await page.waitForFunction(() => document.getElementById('status').textContent.startsWith('Ready: 2 routes'));
+    await page.locator('.node').first().waitFor();
+    for (const id of ['akari_jp', 'google_dns'])
+      await page.locator(`.node[data-node-id="${id}"] .node-select`).click();
+    await page.locator('#goBtn').click();
+    await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 2 routes'));
+    assert.equal(await page.locator('.card').count(), 2);
+    assert.equal(await page.locator('.trial-plot').count(), 0);
+    await page.locator('[data-mode="charts"]').click();
+    await page.locator('#goBtn').click();
+    await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 2 routes'));
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
-    assert.equal(await page.locator('.matrix-card').count(), 2);
-    assert.deepEqual(await page.locator('.matrix-card').first().locator('.badge').allTextContents(), ['Ext', 'v4']);
+    assert.equal(await page.locator('.card').count(), 2);
+    assert.deepEqual(await page.locator('.card').first().locator('.badge').allTextContents(), ['Ext', 'v4']);
     assert.deepEqual(await page.locator('#chart-key span').allTextContents(),
       ['Mean median RTT', 'Median range', 'Peak loss']);
-    assert.ok(await page.locator('.matrix-card').first().evaluate(card =>
-      parseFloat(getComputedStyle(card.querySelector('.metric-current dd')).fontSize)
-      > parseFloat(getComputedStyle(card.querySelector('dl > div:nth-child(2) dd')).fontSize)));
+    assert.equal(await page.locator('.u-cursor-x,.u-cursor-y').count(), 0);
     const screenshot = path.join(__dirname, '../test-results/p4-matrix-live.png');
     fs.mkdirSync(path.dirname(screenshot), { recursive: true });
-    await page.locator('.matrix-card').first().screenshot({ path: screenshot });
-    await page.locator('#nodes [data-id="legendsg"] .choose').click();
-    for (const id of ['akari_jp', 'legendsg']) await page.locator(`#nodes [data-id="${id}"] .fixed`).click();
-    await page.locator('#load').click();
-    await page.waitForFunction(() => document.getElementById('status').textContent.startsWith('Ready: 4 routes'));
+    await page.locator('.card').first().screenshot({ path: screenshot });
+    await page.locator('.node[data-node-id="legendsg"] .node-select').click();
+    await page.locator('[data-pair-mode="fixed"]').click();
+    for (const id of ['akari_jp', 'legendsg'])
+      await page.locator(`.node[data-node-id="${id}"] .node-anchor`).click();
+    await page.locator('#goBtn').click();
+    await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 4 routes'));
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
-    assert.equal(await page.locator('.matrix-card').count(), 4);
-    assert.ok((await page.locator('.matrix-card h2').allTextContents()).every(title =>
-      title.includes('→ Google DNS')));
-    assert.ok((await page.locator('.matrix-card').first().locator('.badge').allTextContents()).includes('Ext'));
+    assert.equal(await page.locator('.card').count(), 4);
+    assert.ok((await page.locator('.route').allTextContents()).every(title => title.includes('Google DNS')));
+    assert.ok((await page.locator('.card').first().locator('.badge').allTextContents()).includes('Ext'));
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ site: origin, total: data.total, end: data.end,
       compressed: response.headers.get('content-encoding'), v4MaxMs: full.summary.max_median_ms,

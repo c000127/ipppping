@@ -356,3 +356,33 @@ Ext v4/v6 核验、可见 Canvas 与主指标样式检查，无脚本异常；�
 Git 忽略的 `test-results/p4-matrix-live.png`。主控 `ipppping`、Caddy、
 freshness timer 均 active，`/healthz` 返回 `ok`，`NRestarts=0`。
 保留旧资源与上述备份；本次视觉更新不是 G4 全矩阵生产负载通过证明。
+
+## 2026-09-28 P4 试验页原站控件整合
+
+仅更新独立 `/chart-matrix-trial` 的 HTML、CSS、JS，纳入主页面的顶栏、
+节点选择、多 Fixed、协议筛选、Results/Charts、统一轴、两行状态和五指标卡；
+图表不再出现随鼠标移动的十字虚线。Results 使用旧统计批量 API，Charts
+使用有界 v2 Canvas；主页默认 PNG、单链路试用页及后端数据契约不变。
+设计取舍及 G4 未完成项见 [P4 报告](FRONTEND_P4_REPORT.md)。
+
+本机构建清单 SHA-256 为
+`f3cdedd501e1919b1a97e674603ffc8bb30952b60a150d6f3430b88edc05a8fe`；
+主控 staging `/root/ipppping-stage-integration-YQxmgT` 的清单、矩阵 HTML
+与主页 HTML 逐项哈希相同。11 个资产均由安装器验证；新试验页指纹资源为
+`chart-matrix-trial.e0aba646e13fc129.css` 和
+`chart-matrix-trial.1fa6d701ae2328a3.js`。沿用带自动回滚的
+`deploy/install-api.py` 发布，备份位于
+`/root/ipppping-backup-20260928T110853829101Z`。发布后主页面 HTML SHA-256
+保持 `3617d0cf04b62daf4a00fc6eca7ce454190f6ec9e04b253f18276db4932d0bdf`，
+单链路试验页保持
+`04be375071b426c6cc9622fd5702c84cc8a790776713ed420b3e52f0b74af76b`；
+本页变为 `3b208c7f4eed8ec77b6d08a02f2386480db67740f8cb37158a3f03c550549d15`。
+
+发布前 81 项 Python、Node 摘要契约、主页面 17 组 Chrome 回归、旧单链路
+试验页回归以及整合页 480 模拟链路与 axe 自动检查通过。新整合版 60 秒
+滚动的 DOM/监听器/Canvas 数量保持稳定，但 480 张完整卡片约 2.98 万个
+DOM 节点仍须 G4 长测。发布后公网 Chrome 低速核验：
+`akari_jp→google_dns` 的 v4/v6、Results→Charts、两个 Fixed VPS 到
+Google DNS 的 4 条 Ext v4/v6 链路及可见 Canvas 均正常；主页面应用
+指纹仍为 `app.e036d7b6d2eaa8be.js`，无脚本异常。`ipppping`、Caddy
+均 active 且 `NRestarts=0`；未触碰节点列表、RRD 和采样服务。

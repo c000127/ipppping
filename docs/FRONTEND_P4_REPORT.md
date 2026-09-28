@@ -35,9 +35,9 @@
 | 主控隔离真实 `rrdtool` | 480 个不同路径缓存键、15 页、960 次子进程调用；4/2/1 工作项总墙钟分别 8.72/9.32/15.56 秒，子进程峰值分别 4/2/1；2 工作项每页中位 577 ms、子进程 CPU 累计 9.48 秒、试验 API 峰值 RSS 45,284 KiB；15 页 JSON 490,268 B / gzip 16,299 B。故 P4 限为 2 工作项 | 自动删除临时目录，未读生产 RRD；480 硬链接共享同一热 inode，不能代表生产冷盘或并发用户 |
 | 公网 opt-in 小规模 | `akari_jp→google_dns` 两个协议摘要与 v4 序列一致；gzip 命中、Chrome 可见 Canvas 2；两个 Fixed VPS 到同一外部目标产生 4 个结果且同时显示 Ext 与 v4/v6；主页面资产指纹未变、API/Caddy active、NRestarts=0、新鲜度 timer 成功 | 仅 2/4 路由低速核验，不是全量生产压测；Cloudflare 会动态注入挑战脚本，故公网整页 SHA 不可与源文件直接比 |
 
-## 2026-09-28 独立试验页图表视觉精修
+## 2026-09-28 独立试验页图表视觉精修（历史阶段）
 
-本轮仅调整独立 `/chart-matrix-trial`，仍以既有深色界面为基底，不在
+此阶段仅调整独立 `/chart-matrix-trial`，仍以既有深色界面为基底，不在
 主页面切换渲染器。设计取舍参考 [Grafana Saga 的任务优先原则](https://grafana.com/developers/saga/foundations/design-principles/)
 与 [Grafana 时序图语义](https://grafana.com/docs/grafana/latest/visualizations/panels-visualizations/visualizations/time-series/)、
 [IBM Carbon 坐标轴及缺口指引](https://carbondesignsystem.com/data-visualization/axes-and-labels/)、
@@ -67,18 +67,51 @@
   363,298,816 B。与旧版 16,631 DOM 节点相比，视觉增量约 497 节点；
   这是短时模拟证据，不取代 G4 的长时与真实生产负载验收。
 
+## 2026-09-28 原站控件整合与十字线移除
+
+独立试验页现采用与主页面相同的顶栏、节点列表、两行选中状态、时间范围、
+All/IPv4/IPv6/Ext、Pairing/多 Fixed、Results/Charts、统一 Y 轴、提交按钮、
+抽屉和五项统计卡结构，直接复用 `styles.css`、`ui-components.js` 的控件及
+统计渲染。Results 调用原有 `/api/stats-batch.json`，Charts 调用冻结的 v2
+摘要/可见序列；只有试验页的 Charts 用 Canvas，主页面默认 PNG 未变。
+鼠标移动不再绘制 uPlot 十字虚线，也不展示无实际用途的悬浮捕获层。
+
+视觉取舍参考 [Vercel Geist 的暗色层级与边框](https://vercel.com/geist/colors)、
+[Geist Badge](https://vercel.com/geist/badge) 和
+[Linear 界面更新说明](https://linear.app/now/behind-the-latest-design-refresh)。
+基底 `#0a0a0a`、微边框、Ghost 风格 v4/v6/Ext 标签和选中侧条是本站试验
+令牌，**不是**上述设计系统规定的精确数值。沿用既有 JetBrains Mono，
+所有数字使用等宽数字；没有引入额外网络字体。Canvas 的水平网格色读取
+与卡片、统计分隔线同一个 `--trial-rule` CSS 变量；保留 RTT 青色、范围
+紫色和 Loss 珊瑚色的语义。没有直接复制 Cloudflare Radar 的图表样式，
+也未将未经证实的丢包热力图样式作为规范。
+
+本地 Chrome 整合测试覆盖 Results→Charts、摘要分页、外部双栈标签、
+多 Fixed 排除互联、协议即时筛选、统一轴、抽屉开合、局部缺数提示、
+隐藏页暂停、390/720/1440px、模拟 200% 缩放、DPR 3.5 背板预算与
+axe WCAG 2 A/AA、2.1/2.2 A/AA 自动规则。16 台双栈 VPS 的 480 条
+模拟链路仍为 15 页摘要；整套交互及滚动测试累计 18 次序列请求，最多 4 个图表
+实例、8 项缓存，无 PNG 请求或脚本错误。已人工检查桌面与窄屏截图；
+测试截图位于 Git 忽略的 `test-results/`。这些结果证明本地模拟行为，
+不能推导出公网主控在冷盘或多用户情况下的吞吐。
+整合版另做 60 秒/30 次三段滚动：GC 后 DOM 29,850、监听器 55、
+Canvas 4、背板合计 980,320 像素保持不变；JS heap 3,707,992 →
+3,815,232 B，进程私有内存 490,049,536 → 375,472,128 B。约 2.98 万
+DOM 节点是五指标卡完整呈现 480 条链路的成本，G4 仍需较长时段测量并
+决定是否引入 Results/Charts 列表虚拟化，不能将短时稳定视为极致轻量的证明。
+
 ## G4 仍需完成
 
 1. 已完成热 inode 的隔离 `rrdtool` 基准和小规模生产路由可用性；仍需生产
    API 的真实路由成本、CPU/RSS/响应体与持续吞吐，不能仅凭试验数值推断
    2 GiB 主控的冷盘及多用户承载性。继续保持低速、可回滚和默认 PNG。
-2. 最终构建独立试验页 Chrome 全矩阵 10 分钟已完成；主页面集成后仍需 60 分钟滚动与反复提交，记录 GC 后 JS heap、DOM、
+2. 历史版本独立试验页 Chrome 全矩阵 10 分钟已完成；新整合版本仍需 60 分钟滚动与反复提交，记录 GC 后 JS heap、DOM、
    listener、Canvas 像素、进程/GPU 私有内存趋势及错误；检查首次全摘要等待
    与交互延迟，确定是否需要进一步卡片虚拟化。
-3. 将冻结摘要、可见图表实例与现有主页面 Charts 卡片/过滤器/选择状态接入同一套
-   UI，仍以显式试用开关隔离；Results 和未开启试用的 PNG 路径不变。随后验证
-   缺口、极值、100% 丢包、外部节点 v4/v6、多个 Fixed、200% 缩放、移动宽度、
-   键盘/读屏等同等信息；局部失败和中断要有可恢复状态。
+3. 独立试验页已整合主页面的控件与卡片结构，但其查询状态仍由独立脚本管理，
+   不能称为主页面直接接入 Canvas。G4 正式通过前仍需评估共用状态控制器或
+   显式试用开关，再验收真实负载、键盘/读屏信息等价及局部失败恢复；
+   Results 和未开启试用的 PNG 路径必须不变。
 4. 已上线独立 opt-in 试验路径；完成主页面兼容集成及 G4 后再讨论 P5 默认
    迁移、受控回滚演练及 24–48 小时观察。独立试验上线不代表主页面切换。
 

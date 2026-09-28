@@ -32,17 +32,19 @@ function pairs(query) {
   const fixed = new Set((query.get('anchor') || '').split(',').filter(Boolean));
   const combinations = [];
   for (let i = 0; i < chosen.length; i++) for (let j = i + 1; j < chosen.length; j++) {
-    if (fixed.size && (!fixed.has(chosen[i].id) || fixed.has(chosen[j].id))) continue;
+    if (fixed.size && fixed.has(chosen[i].id) === fixed.has(chosen[j].id)) continue;
     combinations.push([chosen[i], chosen[j]]);
   }
   return combinations.flatMap(([a, b]) => {
     if (a.group === 'dns' || b.group === 'dns') {
       const source = a.group === 'dns' ? b : a, target = a.group === 'dns' ? a : b;
       return ['v4', 'v6'].map(type => ({ source: source.id, target: target.id, type,
-        srcLabel: source.label, tgtLabel: target.label, ext: true }));
+        srcLabel: source.label, tgtLabel: target.label, ext: true,
+        pairKey: [a.id, b.id].join('_'), direction: 0 }));
     }
     return [[a, b], [b, a]].flatMap(([source, target]) => ['v4', 'v6'].map(type => ({
-      source: source.id, target: target.id, type, srcLabel: source.label, tgtLabel: target.label, ext: false
+      source: source.id, target: target.id, type, srcLabel: source.label, tgtLabel: target.label,
+      ext: false, pairKey: [a.id, b.id].join('_'), direction: source.id === a.id ? 0 : 1
     })));
   });
 }
@@ -50,7 +52,8 @@ function summary(pair, end, dur, maximum) {
   const visualCase = pair.source === 'v0' && pair.target === 'ext' && pair.type === 'v4';
   return { source: pair.source, target: pair.target, protocol: pair.type,
     schema: 'ipppping.series.v2', snapshot_id: 'a'.repeat(24), window: { start: end - dur, end },
-    current: { current_ms: visualCase ? 8 : 10 }, summary: { average_ms: visualCase ? 7.25 : 10,
+    current: { current_ms: visualCase ? 8 : 10, measurement_updated_at: end - 60 },
+    summary: { average_ms: visualCase ? 7.25 : 10,
       min_median_ms: visualCase ? 3.3 : 10,
       max_median_ms: maximum, loss_pct: visualCase ? 12.5 : 0, measurement_coverage: 1 } };
 }
@@ -66,6 +69,11 @@ const server = http.createServer((req, res) => {
     if (pathname === '/api/pairs') { res.end(JSON.stringify(routes)); return; }
     const end = url.searchParams.has('end') ? Number(url.searchParams.get('end')) : Math.floor(Date.now() / 60000) * 60;
     const dur = Number(url.searchParams.get('dur'));
+    if (pathname === '/api/stats-batch.json') {
+      res.end(JSON.stringify({ items: routes.map(pair => ({ ...pair,
+        stats: { current_ms: 10, avg_ms: 10, min_ms: 8, max_ms: 12,
+          loss_pct: pair.ext ? 2 : 0, measurement_updated_at: end - 60 } })) })); return;
+    }
     if (pathname === '/api/v2/summary-batch') {
       const offset = Number(url.searchParams.get('offset')), limit = Number(url.searchParams.get('limit'));
       const items = routes.slice(offset, offset + limit).map((pair, i) =>
@@ -117,40 +125,74 @@ const server = http.createServer((req, res) => {
 
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const browser = await chromium.launch({ headless: true, ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}) });
+  const browser = await chromium.launch({ headless: true,
+    ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}) });
+  const origin = 'http://127.0.0.1:' + server.address().port;
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    const errors = []; page.on('pageerror', error => errors.push(error.message));
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
     if (process.env.RUN_AXE) await page.addInitScript({ path: path.join(root, 'build/qa-deps/package/axe.min.js') });
-    await page.goto(`http://127.0.0.1:${server.address().port}/chart-matrix-trial`);
-    await page.locator('#load').waitFor({ state: 'visible' });
-    await page.waitForFunction(() => !document.getElementById('load').disabled);
+    await page.goto(origin + '/chart-matrix-trial');
+    await page.locator('.node').first().waitFor();
+    assert.equal(await page.locator('.node').count(), 17);
     assert.equal(await page.locator('#chart-key').isVisible(), false);
-    assert.equal(requests.filter(route => route !== '/api/nodes').length, 0);
-    for (const id of ['v0', 'v1', 'ext']) await page.locator(`#nodes [data-id="${id}"] .choose`).click();
-    for (const id of ['v0', 'v1']) await page.locator(`#nodes [data-id="${id}"] .fixed`).click();
-    await page.locator('#load').click();
-    await page.waitForFunction(() => document.getElementById('status').textContent.startsWith('Ready: 4 routes'));
-    assert.equal(await page.locator('.matrix-card').count(), 4);
-    assert.equal(await page.locator('.matrix-card .badge').first().textContent(), 'Ext');
+    assert.deepEqual(requests, ['/api/nodes']);
+    for (const id of ['v0', 'v1', 'ext'])
+      await page.locator('.node[data-node-id="' + id + '"] .node-select').click();
+    assert.match(await page.locator('#selSummary').textContent(), /3 nodes.*8 results/);
+    await page.locator('#goBtn').click();
+    await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 8 routes'));
+    assert.equal(await page.locator('.card').count(), 8);
+    assert.equal(requests.filter(route => route === '/api/stats-batch.json').length, 1);
+    assert.equal(requests.filter(route => route === '/api/v2/series').length, 0);
+    assert.match(await page.locator('#selFreshness').textContent(), /^Updated \d\d:\d\d$/);
+    await page.locator('[data-filter="ext"]').click();
+    assert.equal(await page.locator('.card').count(), 4);
+    assert.equal(await page.locator('.card .badge-ext').count(), 4);
+    await page.locator('[data-filter="v6"]').click();
+    assert.equal(await page.locator('.card').count(), 4);
+    await page.locator('[data-filter="all"]').click();
+    assert.equal(await page.locator('.card').count(), 8);
+    await page.locator('[data-mode="charts"]').click();
+    assert.equal(await page.locator('#selFreshness').textContent(), 'Unapplied changes');
+    assert.equal(await page.locator('.trial-plot').count(), 0);
+    await page.locator('#goBtn').click();
+    await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 8 routes'));
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
-    assert.deepEqual(await page.locator('#chart-key span').allTextContents(),
-      ['Mean median RTT', 'Median range', 'Peak loss']);
-    assert.ok(await page.locator('.matrix-card').first().evaluate(card =>
-      parseFloat(getComputedStyle(card.querySelector('.metric-current dd')).fontSize)
-      > parseFloat(getComputedStyle(card.querySelector('dl > div:nth-child(2) dd')).fontSize)));
-    assert.equal(await page.locator('.matrix-card').first().locator('.metric-alert dd').textContent(), '12.50%');
-    assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4));
-    await page.evaluate(() => {
-      Object.defineProperty(document, 'hidden', { configurable: true, value: true });
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
-    assert.equal(await page.evaluate(() => ChartMatrixTrial.instanceCount), 0);
-    await page.evaluate(() => {
-      Object.defineProperty(document, 'hidden', { configurable: true, value: false });
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
+    assert.equal(await page.locator('#chart-key').isVisible(), true);
+    assert.equal(await page.locator('.trial-plot').count(), 8);
+    assert.equal(await page.locator('.card .badge-ext').count(), 4);
+    const graphic = page.locator('.trial-plot .uplot').first();
+    await graphic.hover();
+    assert.equal(await page.locator('.u-cursor-x,.u-cursor-y').count(), 0);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--trial-rule').trim()),
+      await page.evaluate(() => ChartMatrixTrial.gridColor));
+    assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.pendingCount <= 4));
+    await page.locator('#unifiedAxisToggle').check();
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    await page.locator('#unifiedAxisToggle').uncheck();
+    await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    await page.locator('[data-pair-mode="fixed"]').click();
+    for (const id of ['v0', 'v1'])
+      await page.locator('.node[data-node-id="' + id + '"] .node-anchor').click();
+    assert.match(await page.locator('#selSummary').textContent(), /3 nodes.*2 fixed.*4 results/);
+    await page.locator('#goBtn').click();
+    await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 4 routes'));
+    assert.equal(await page.locator('.card').count(), 4);
+    assert.equal(await page.locator('.card .badge-ext').count(), 4);
+    assert.equal(await page.evaluate(() => ChartMatrixTrial.pairs.every(pair => pair.ext)), true);
+    partialMissing = true;
+    await page.locator('#goBtn').click();
+    await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 4 routes'));
+    assert.equal(await page.locator('.trial-plot.problem').count(), 1);
+    assert.match(await page.locator('.trial-plot.problem').textContent(), /No chart: no_data/);
+    partialMissing = false;
+    await page.locator('#toggleSidebar').click();
+    assert.equal(await page.locator('#sidebar').getAttribute('aria-hidden'), 'true');
+    await page.waitForTimeout(260);
+    assert.equal(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4), true);
+    await page.locator('#toggleSidebar').click();
     if (process.env.RUN_AXE) {
       const violations = await page.evaluate(async () => (await axe.run(document, {
         runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] }
@@ -159,38 +201,33 @@ const server = http.createServer((req, res) => {
     }
     for (const width of [390, 720, 1440]) {
       await page.setViewportSize({ width, height: 900 });
-      await page.waitForTimeout(60);
+      await page.waitForTimeout(260);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     }
+    await page.evaluate(() => { document.body.style.zoom = '2'; });
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.evaluate(() => { document.body.style.zoom = ''; });
     const screenshot = path.join(root, 'test-results/p4-matrix-trial.png');
     fs.mkdirSync(path.dirname(screenshot), { recursive: true });
     await page.screenshot({ path: screenshot });
-    await page.locator('.matrix-card').first().screenshot({ path: path.join(root, 'test-results/p4-matrix-card.png') });
-    await page.locator('#axis').selectOption('independent');
-    await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
-    await page.locator('#axis').selectOption('unified');
-    await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
-    partialMissing = true;
-    await page.locator('#load').click();
-    await page.waitForFunction(() => document.getElementById('status').textContent.startsWith('Ready: 4 routes'));
-    assert.equal(await page.locator('.matrix-card .plot.problem').count(), 1);
-    assert.match(await page.locator('.matrix-card .plot.problem').textContent(), /No chart: no_data/);
-    partialMissing = false;
-    for (const id of ['v0', 'v1']) await page.locator(`#nodes [data-id="${id}"] .fixed`).click();
-    await page.locator('#nodes [data-id="ext"] .choose').click();
-    for (let i = 2; i < 16; i++) await page.locator(`#nodes [data-id="v${i}"] .choose`).click();
+    await page.locator('.card').first().screenshot({ path: path.join(root, 'test-results/p4-matrix-card.png') });
+    await page.locator('[data-pair-mode="all"]').click();
+    await page.locator('.node[data-node-id="ext"] .node-select').click();
+    for (let i = 2; i < 16; i++)
+      await page.locator('.node[data-node-id="v' + i + '"] .node-select').click();
+    assert.match(await page.locator('#selSummary').textContent(), /16 nodes.*480 results/);
     const prior = requests.length;
-    await page.locator('#load').click();
-    await page.waitForFunction(() => document.getElementById('status').textContent.startsWith('Ready: 480 routes'));
-    assert.equal(await page.locator('.matrix-card').count(), 480);
+    await page.locator('#goBtn').click();
+    await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 480 routes'));
+    assert.equal(await page.locator('.card').count(), 480);
     assert.equal(await page.evaluate(() => ChartMatrixTrial.matrix.unifiedMax), 489 * 1.1);
     assert.equal(requests.slice(prior).filter(route => route === '/api/v2/summary-batch').length, 15);
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
     assert.ok(requests.slice(prior).filter(route => route === '/api/v2/series').length < 20);
     assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.cacheCount <= 8));
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.locator('#mainArea').evaluate(main => { main.scrollTop = main.scrollHeight; });
     await page.waitForTimeout(600);
-    assert.ok(await page.locator('#chart-key').evaluate(key => Math.abs(key.getBoundingClientRect().top) <= 1));
     assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.cacheCount <= 8));
     const soakSeconds = Number(process.env.SOAK_SECONDS || 0);
     const samples = [];
@@ -217,14 +254,16 @@ const server = http.createServer((req, res) => {
       let cycle = 0, previousSample = 0;
       await sample(0);
       while (Date.now() - started < soakSeconds * 1000) {
-        await page.evaluate(position => window.scrollTo(0, position * (document.body.scrollHeight - innerHeight)), (cycle % 3) / 2);
+        await page.locator('#mainArea').evaluate((main, fraction) => {
+          main.scrollTop = fraction * (main.scrollHeight - main.clientHeight);
+        }, (cycle % 3) / 2);
         await page.waitForTimeout(2000);
         const elapsed = Date.now() - started;
         if (elapsed - previousSample >= 60000) { await sample(elapsed); previousSample = elapsed; }
         cycle++;
       }
       await sample(Date.now() - started);
-      const target = path.join(root, `test-results/p4-matrix-browser-soak-${soakSeconds}s.json`);
+      const target = path.join(root, 'test-results/p4-matrix-browser-soak-' + soakSeconds + 's.json');
       fs.mkdirSync(path.dirname(target), { recursive: true });
       fs.writeFileSync(target, JSON.stringify({ soakSeconds, cycles: cycle, samples, errors }, null, 2));
       console.log('Soak report:', target);
@@ -235,18 +274,25 @@ const server = http.createServer((req, res) => {
     const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3.5 });
     const mobileErrors = [];
     mobile.on('pageerror', error => mobileErrors.push(error.message));
-    await mobile.goto(`http://127.0.0.1:${server.address().port}/chart-matrix-trial`);
-    await mobile.waitForFunction(() => !document.getElementById('load').disabled);
-    for (const id of ['v0', 'ext']) await mobile.locator(`#nodes [data-id="${id}"] .choose`).click();
-    await mobile.locator('#load').click();
+    await mobile.goto(origin + '/chart-matrix-trial');
+    await mobile.locator('.node').first().waitFor({ state: 'attached' });
+    await mobile.locator('#toggleSidebar').click();
+    for (const id of ['v0', 'ext'])
+      await mobile.locator('.node[data-node-id="' + id + '"] .node-select').click();
+    await mobile.locator('[data-mode="charts"]').click();
+    await mobile.locator('#goBtn').click();
     await mobile.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    assert.equal(await mobile.locator('#sidebar').getAttribute('aria-hidden'), 'true');
+    await mobile.waitForTimeout(260);
+    assert.equal(await mobile.locator('#sidebar').evaluate(sidebar => getComputedStyle(sidebar).visibility), 'hidden');
     await mobile.screenshot({ path: path.join(root, 'test-results/p4-matrix-mobile.png') });
-    await mobile.locator('.matrix-card').first().screenshot({ path: path.join(root, 'test-results/p4-matrix-card-mobile.png') });
+    await mobile.locator('.card').first().screenshot({ path: path.join(root, 'test-results/p4-matrix-card-mobile.png') });
     assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth &&
       [...document.querySelectorAll('canvas')].reduce((sum, canvas) => sum + canvas.width * canvas.height, 0)
       <= ChartMatrixTrial.instanceCount * 1280 * 220 * 4));
     assert.deepEqual(mobileErrors, []);
     await mobile.close();
+    assert.equal(requests.includes('/api/graph.png'), false);
     console.log(JSON.stringify({ routes: 480, summaryPages: 15,
       seriesRequests: requests.filter(route => route === '/api/v2/series').length,
       instanceCount: await page.evaluate(() => ChartMatrixTrial.instanceCount),

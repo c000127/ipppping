@@ -40,11 +40,17 @@ browser viewport.
 
 ## Trial chart marks
 
-The opt-in chart has no hover crosshair or per-sample whisker/cap/halo icons.
-Median range is a restrained translucent interval envelope; nonzero peak loss
-is a thin time bar. Missing latency remains a break in the RTT line. The
-legend must describe the marks actually drawn. The production PNG renderer
-and its data contract are unchanged until a separately approved migration.
+The opt-in matrix chart has no hover crosshair, median-range band, or
+per-sample whisker/cap/halo icons. Nonzero peak loss is a narrow time bar:
+its color grades from amber at low loss through orange to red at 100%, and
+the card's Loss number follows the same continuous severity scale. At 0%,
+the number is neutral. A bar reaching 100% must cover the plot's full height.
+Only when **every** consolidated bucket in an interval has 100% loss may a
+subtle full-height band fill that entire time interval; a mixed interval with
+a 100% peak stays a narrow bar. Missing latency remains a break in the RTT
+line. The legend must describe the marks actually drawn. The production PNG
+renderer and its data contract are unchanged until a separately approved
+migration.
 
 ## Required checks
 

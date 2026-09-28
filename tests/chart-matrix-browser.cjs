@@ -93,15 +93,16 @@ const server = http.createServer((req, res) => {
       const start = end - dur;
       data.encoding = 'columns-v1';
       if (pair.source === 'v0' && pair.target === 'ext' && pair.type === 'v4') {
-        const median = [4, 4.5, 5.5, 6, 7.5, 9, null, 6.5, 8.5, 8];
-        const loss = [0, 0, 0, 25, 0, 0, 100, 0, 0, 0];
+        const median = [4, 4.5, 5.5, null, 7.5, 9, null, 6.5, 8.5, 8];
+        const loss = [0, 25, 0, 100, 0, 0, 100, 0, 0, 0];
+        const count = loss.map((_, i) => i === 3 ? 4 : 1);
         data.columns = {
           start: median.map((_, i) => start + i * dur / median.length),
           end: median.map((_, i) => start + (i + 1) * dur / median.length),
-          count: median.map(() => 1), median_mean_ms: median,
-          min_median_ms: median.map(value => value === null ? null : value - 0.7),
-          max_median_ms: median.map(value => value === null ? null : value + 0.7),
-          loss_mean_pct: loss, loss_max_pct: loss,
+          count, median_mean_ms: median,
+          min_median_ms: median.map((value, i) => i === 3 ? 5.3 : value === null ? null : value - 0.7),
+          max_median_ms: median.map((value, i) => i === 3 ? 6.7 : value === null ? null : value + 0.7),
+          loss_mean_pct: loss.map((value, i) => i === 3 ? 25 : value), loss_max_pct: loss,
           loss_event_count: loss.map(value => Number(value > 0)),
           full_loss_count: loss.map(value => Number(value === 100)),
           missing_latency_count: median.map(value => Number(value === null)),
@@ -134,6 +135,17 @@ const server = http.createServer((req, res) => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    await page.addInitScript(() => {
+      window.__lossDraws = [];
+      window.__captureLossDraws = true;
+      const original = CanvasRenderingContext2D.prototype.fillRect;
+      CanvasRenderingContext2D.prototype.fillRect = function(x, y, width, height) {
+        if (window.__captureLossDraws && this.fillStyle instanceof CanvasGradient)
+          window.__lossDraws.push({ x, y, width, height, alpha: this.globalAlpha });
+        return original.call(this, x, y, width, height);
+      };
+      window.__restoreLossDraws = () => { CanvasRenderingContext2D.prototype.fillRect = original; };
+    });
     if (process.env.RUN_AXE) await page.addInitScript({ path: path.join(root, 'build/qa-deps/package/axe.min.js') });
     await page.goto(origin + '/chart-matrix-trial');
     await page.locator('.node').first().waitFor();
@@ -190,6 +202,37 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.locator('.trial-plot').count(), 8);
     assert.equal(await page.locator('.card .badge-ext').count(), 4);
     await assertFiveColumnDesign();
+    assert.deepEqual(await page.locator('#chart-key span').allTextContents(), ['Mean median RTT', 'Peak loss']);
+    assert.equal(await page.locator('.key-range').count(), 0);
+    await page.locator('.card').filter({ hasText: '12.5%' }).first().scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => [...document.querySelectorAll('.card')].some(item =>
+      item.querySelector('.stat-item[data-metric="4"] .stat-number')?.textContent === '12.5' &&
+      item.querySelector('.trial-plot .uplot')));
+    const lossVisual = await page.evaluate(() => {
+      const marked = [...document.querySelectorAll('.card')].find(item =>
+        item.querySelector('.stat-item[data-metric="4"] .stat-number')?.textContent === '12.5');
+      const zero = [...document.querySelectorAll('.card')].find(item =>
+        item.querySelector('.stat-item[data-metric="4"] .stat-number')?.textContent === '0.0');
+      const draws = window.__lossDraws;
+      window.__captureLossDraws = false;
+      window.__restoreLossDraws();
+      return { colored: getComputedStyle(marked.querySelector('[data-metric="4"] .stat-value')).color,
+        zero: getComputedStyle(zero.querySelector('[data-metric="4"] .stat-value')).color,
+        draws, key: getComputedStyle(document.querySelector('.key-loss'), '::before').backgroundImage,
+        medianBand: getComputedStyle(document.body).getPropertyValue('--trial-range-fill').trim() };
+    });
+    assert.equal(lossVisual.colored, 'rgb(246, 147, 14)');
+    assert.equal(lossVisual.zero, 'rgb(185, 185, 185)');
+    assert.match(lossVisual.key, /linear-gradient/);
+    assert.equal(lossVisual.medianBand, '');
+    const fullBands = lossVisual.draws.filter(mark => mark.alpha === .3 && mark.width > 10);
+    const fullBars = lossVisual.draws.filter(mark => mark.alpha === .9 && mark.width <= 10);
+    const partialBars = lossVisual.draws.filter(mark => mark.alpha === .7 && mark.width <= 10);
+    assert.equal(fullBands.length, 1, 'only the entirely lost interval fills its time span');
+    assert.equal(fullBars.length, 2, '100% peak and full interval both reach the top');
+    assert.equal(partialBars.length, 1, '25% loss remains a short narrow bar');
+    assert.ok(fullBars.every(mark => mark.y === fullBands[0].y && mark.height === fullBands[0].height));
+    assert.ok(partialBars[0].height < fullBands[0].height / 2);
     const graphic = page.locator('.trial-plot .uplot').first();
     await graphic.hover();
     assert.equal(await page.locator('.u-cursor-x,.u-cursor-y').count(), 0);

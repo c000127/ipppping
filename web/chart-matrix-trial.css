@@ -12,9 +12,9 @@
   --border-hi: rgba(255, 255, 255, .15);
   --trial-plot: #0d0d0d;
   --trial-rtt: #8bd6e3;
-  --trial-range-fill: rgba(174, 156, 219, .16);
-  --trial-loss: #f49b81;
-  --trial-loss-fill: rgba(244, 155, 129, .28);
+  --trial-loss-low: #f59e0b;
+  --trial-loss-mid: #f97316;
+  --trial-loss-high: #ef4444;
   --radius: 4px;
   --control-radius: 4px;
   font-variant-numeric: tabular-nums;
@@ -114,6 +114,9 @@
 .matrix-integrated-trial .stat-value,
 .matrix-integrated-trial .clock,
 .matrix-integrated-trial .sel-info { font-variant-numeric: tabular-nums; }
+.matrix-integrated-trial .stat-item[data-metric="4"] .stat-value {
+  color: var(--trial-loss-current, var(--text-sec));
+}
 .matrix-integrated-trial .matrix-key {
   position: sticky;
   top: 0;
@@ -133,12 +136,9 @@
 .matrix-integrated-trial .matrix-key span { display: inline-flex; align-items: center; gap: 6px; }
 .matrix-integrated-trial .matrix-key span::before { content: ''; display: inline-block; flex: none; }
 .matrix-integrated-trial .key-rtt::before { width: 16px; border-top: 2px solid var(--trial-rtt); }
-.matrix-integrated-trial .key-range::before {
-  width: 13px; height: 7px; background: var(--trial-range-fill);
-}
 .matrix-integrated-trial .key-loss::before {
   width: 3px; height: 10px;
-  background: var(--trial-loss);
+  background: linear-gradient(to top, var(--trial-loss-low), var(--trial-loss-mid), var(--trial-loss-high));
 }
 .matrix-integrated-trial .trial-plot {
   width: 100%;

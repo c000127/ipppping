@@ -121,7 +121,8 @@ Each output bin describes its true start/end and number of source buckets:
 - `median_mean_ms`: mean of medians only when **every** member RTT is known;
   otherwise null, forcing a line break across the aggregate interval.
 - `min_median_ms`, `max_median_ms`: extrema of known medians even in a partial
-  interval; drawn as isolated vertical marks with caps, never a line bridging gaps.
+  interval. The opt-in single-route trial can inspect them as isolated marks;
+  the matrix trial omits the median-range overlay. Neither bridges RTT gaps.
 - `loss_mean_pct`, `loss_max_pct`: known-loss mean/maximum.
 - `loss_event_count`, `full_loss_count`, `missing_latency_count`,
   `missing_measurement_count`: retain event severity/count without pretending to

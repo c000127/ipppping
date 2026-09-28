@@ -21,6 +21,19 @@ const ChartMatrixTrial = (() => {
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[char]));
+  const lossPalette = () => {
+    const theme = getComputedStyle(document.body);
+    return ['low', 'mid', 'high'].map(step => theme.getPropertyValue('--trial-loss-' + step).trim());
+  };
+  function lossColor(value, palette) {
+    if (!Number.isFinite(value) || value <= 0) return '';
+    const amount = Math.min(value, 100) / 50;
+    const [start, end, fraction] = amount <= 1
+      ? [palette[0], palette[1], amount] : [palette[1], palette[2], amount - 1];
+    const channel = offset => Math.round(parseInt(start.slice(offset, offset + 2), 16) * (1 - fraction) +
+      parseInt(end.slice(offset, offset + 2), 16) * fraction);
+    return `rgb(${channel(1)}, ${channel(3)}, ${channel(5)})`;
+  }
   const label = id => nodes.find(node => node.id === id)?.label || id;
   const identity = MatrixData.identity;
   const timestamp = stamp => new Date(stamp * 1000).toLocaleString('en-GB', {
@@ -131,6 +144,7 @@ const ChartMatrixTrial = (() => {
     if (!c.end.length) { plot.textContent = 'No consolidated intervals in this window.'; return; }
     const theme = getComputedStyle(document.body);
     const color = name => theme.getPropertyValue(name).trim();
+    const palette = lossPalette();
     chartGridColor = color('--trial-rule');
     const font = '11px ' + color('--font-ui');
     const maximum = unified ? visibleMax : Math.max(1, item.summary.max_median_ms || 0) * 1.1;
@@ -139,24 +153,28 @@ const ChartMatrixTrial = (() => {
     const marks = u => {
       const ctx = u.ctx, px = uPlot.pxRatio || window.devicePixelRatio || 1;
       ctx.save(); ctx.beginPath(); ctx.rect(u.bbox.left, u.bbox.top, u.bbox.width, u.bbox.height); ctx.clip();
-      // A quiet interval envelope replaces per-bin whiskers/caps that resembled cursors.
-      ctx.fillStyle = color('--trial-range-fill');
-      for (let i = 0; i < c.end.length; i++) {
-        if (!Number.isFinite(c.min_median_ms[i]) || !Number.isFinite(c.max_median_ms[i])) continue;
-        const left = u.valToPos(c.start[i], 'x', true), right = u.valToPos(c.end[i], 'x', true);
-        const low = u.valToPos(c.min_median_ms[i], 'y', true), high = u.valToPos(c.max_median_ms[i], 'y', true);
-        if (Math.abs(low - high) < 1.5 * px) continue;
-        ctx.fillRect(left, Math.min(low, high), Math.max(0, right - left), Math.abs(low - high));
-      }
-      // Loss remains visible as a narrow time bar, without halos or point icons.
-      ctx.fillStyle = color('--trial-loss-fill');
+      const top = Math.floor(u.bbox.top), bottom = Math.ceil(u.bbox.top + u.bbox.height);
+      const gradient = ctx.createLinearGradient(0, bottom, 0, top);
+      gradient.addColorStop(0, palette[0]);
+      gradient.addColorStop(.5, palette[1]);
+      gradient.addColorStop(1, palette[2]);
+      ctx.fillStyle = gradient;
       for (let i = 0; i < c.end.length; i++) {
         const loss = c.loss_max_pct[i];
         if (!Number.isFinite(loss) || loss <= 0) continue;
         const x = u.valToPos((c.start[i] + c.end[i]) / 2, 'x', true);
-        const y = u.valToPos(loss, 'loss', true);
         if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) continue;
-        ctx.fillRect(x - 2 * px, y, 4 * px, u.bbox.top + u.bbox.height - y);
+        const y = loss >= 100 ? top : Math.max(top, Math.min(bottom - 1, Math.floor(u.valToPos(loss, 'loss', true))));
+        // Only a bin whose every consolidated bucket is fully lost may fill
+        // its whole time span; a 100% peak inside a mixed bin stays a thin bar.
+        if (loss === 100 && c.loss_mean_pct[i] === 100 &&
+            c.count[i] > 0 && c.full_loss_count[i] === c.count[i]) {
+          const left = u.valToPos(c.start[i], 'x', true), right = u.valToPos(c.end[i], 'x', true);
+          ctx.globalAlpha = .3;
+          ctx.fillRect(Math.floor(left), top, Math.ceil(right) - Math.floor(left), bottom - top);
+        }
+        ctx.globalAlpha = loss >= 100 ? .9 : .7;
+        ctx.fillRect(Math.floor(x - 2 * px), y, Math.ceil(4 * px), bottom - y);
       }
       ctx.restore();
     };
@@ -166,13 +184,13 @@ const ChartMatrixTrial = (() => {
       scales: { x: { time: false, range: () => [matrix.end - matrix.dur, matrix.end] },
         y: { range: () => [0, maximum] }, loss: { range: () => [0, 100] } },
       series: [{}, { label: 'Mean median ms', stroke: color('--trial-rtt'), width: 2, spanGaps: false, points: { show: false } },
-        { label: 'Max loss %', scale: 'loss', stroke: color('--trial-loss'), paths: () => null, points: { show: false } }],
+        { label: 'Max loss %', scale: 'loss', stroke: palette[1], paths: () => null, points: { show: false } }],
       axes: [{ ...axis, size: 28, space: 76, grid: { show: false },
         values: (u, ticks) => ticks.map(t => new Date(t * 1000).toLocaleTimeString('en-GB', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false })) },
         { ...axis, size: 48, labelSize: 18, label: 'RTT ms', labelFont: font,
           grid: { stroke: chartGridColor, width: 1 } },
         { ...axis, scale: 'loss', side: 1, size: 34, labelSize: 18, label: 'Loss %',
-          labelFont: font, stroke: color('--trial-loss'), grid: { show: false } }],
+          labelFont: font, stroke: palette[1], grid: { show: false } }],
       hooks: { draw: [marks] }
     }, [c.end.map((stamp, i) => (c.start[i] + stamp) / 2), c.median_mean_ms,
       c.loss_max_pct.map(value => value > 0 ? value : null)], plot);
@@ -397,6 +415,7 @@ const ChartMatrixTrial = (() => {
     const list = orderedIndexes(pairs.map((pair, index) => matches(pair) ? index : -1).filter(index => index >= 0));
     visibleMax = Math.max(1, ...list.map(index => items[index]?.summary?.max_median_ms || 0)) * 1.1;
     const previous = cards;
+    const palette = lossPalette();
     cards = [];
     const fragment = document.createDocumentFragment();
     for (const index of list) {
@@ -416,7 +435,11 @@ const ChartMatrixTrial = (() => {
           '</div><div class="card-right"><div class="stats"></div></div></div>' +
           (appliedMode === 'charts' ? '<div class="card-img trial-plot" role="img" aria-label="Latency and packet loss timeline"></div>' : '') +
           '</div>';
-        UIComponents.updateStats(card.querySelector('.stats'), statsFor(index));
+        const stats = statsFor(index);
+        UIComponents.updateStats(card.querySelector('.stats'), stats);
+        const loss = stats?.loss_pct;
+        const lossItem = card.querySelector('[data-metric="4"]');
+        if (lossItem) lossItem.style.setProperty('--trial-loss-current', lossColor(loss, palette) || 'var(--text-sec)');
         if (items[index]?.error) card.classList.add('is-error');
         if (appliedMode === 'charts' && items[index]?.error) {
           const plot = card.querySelector('.trial-plot');

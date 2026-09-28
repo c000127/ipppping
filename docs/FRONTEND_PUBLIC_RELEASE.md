@@ -417,3 +417,30 @@ Chrome 对主页面两条 Results、两张 PNG 图、五列对齐/全宽分隔�
 11 个指纹资产哈希均通过；矩阵试验页两条 Google DNS 双栈及两个 Fixed
 VPS 的 4 条链路可见 Canvas、无边框和对齐断言通过。页面无脚本错误，
 `ipppping` 与 Caddy active、`NRestarts=0`。这不是 G4 长时间负载验收。
+
+## 2026-09-28 矩阵试验页丢包渐变与完整中断区间
+
+只更新独立 `/chart-matrix-trial` 的 HTML、CSS、JS：移除 Median range
+图形与图例，丢包竖条及 Loss 数字改为按百分比的琥珀→橙→红梯度；
+完整 100% 丢包区间铺满对应时间跨度和绘图区高度，混合区间的 100%
+峰值仍保留细竖条。v2 数据字段、首页 PNG、`/chart-trial` 和采样服务
+均未改动。语义及短时模拟结果见 [P4 报告](FRONTEND_P4_REPORT.md)。
+
+本机构建及主控 staging `/root/ipppping-stage-loss-Yq1peC7N` 的清单
+SHA-256 均为 `a4787fb40b1e54629eab9fad7d48a37d4bfc9e2725d891331b9b8d4da87485b7`；
+安装器健康检查通过并自动备份于
+`/root/ipppping-backup-20260928T115921547463Z`。矩阵资源指纹为
+`chart-matrix-trial.5bc83f885132bb27.css` 与
+`chart-matrix-trial.516d1aebfee28456.js`。主页面 HTML SHA-256 保持
+`3329562ba2d07fdf1edc1b221bafc2caf84312fafa65c7719e7c384931bf2af2`，
+单链路试验页保持 `0e6d099ffc5a651d1a54848a06313d5747c94faf2adedbc805fb23cf226642aa`，
+矩阵页为 `1a00021b4f65d7da2d5a5b6ef7ec33fafbaabf1dc705262bdba53e21f94147b5`；
+线上文件与本机构建逐项一致。
+
+发布前 81 项 Python、矩阵契约、本地 Chrome 主页面源码/指纹版、单链路
+试验页及矩阵 480 路/axe 回归均通过；25%、混合峰值 100% 和完整
+100% 的模拟绘制几何均通过。矩阵 60 秒/30 次滚动未见资源计数增长或
+脚本错误，但不等同 G4 长测。发布后低速公网 Chrome 验证矩阵两条
+Google DNS 双栈链路、两 Fixed 到外部节点四条链路、可见 Canvas、
+首页 Results/两张 PNG 图和 11 个指纹资源哈希，均通过。`ipppping`
+与 Caddy active，`NRestarts=0`。

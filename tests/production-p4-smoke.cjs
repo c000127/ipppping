@@ -68,7 +68,7 @@ const expectedStylesAsset = '/static/assets/' + Object.keys(release.assets).find
     assert.equal(await page.locator('.card').count(), 2);
     assert.deepEqual(await page.locator('.card').first().locator('.badge').allTextContents(), ['Ext', 'v4']);
     assert.deepEqual(await page.locator('#chart-key span').allTextContents(),
-      ['Mean median RTT', 'Median range', 'Peak loss']);
+      ['Mean median RTT', 'Peak loss']);
     assert.equal(await page.locator('.u-cursor-x,.u-cursor-y').count(), 0);
     const screenshot = path.join(__dirname, '../test-results/p4-matrix-live.png');
     fs.mkdirSync(path.dirname(screenshot), { recursive: true });

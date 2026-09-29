@@ -82,6 +82,17 @@ redraws or an overlay covering the axes. Never replay the reveal on scroll
 re-entry or unified-axis toggles. Cancel animations on replacement/disposal.
 `prefers-reduced-motion: reduce` must present final states immediately with
 no CSS/WAAPI transition, while preserving selected state and data semantics.
+For a completed re-submit with the same route order and view mode, update
+existing card elements in place instead of recreating the full matrix DOM.
+Refresh every metric and loss color; clear an old error when the route recovers.
+Changing route order or Results/Charts mode may still replace the necessary
+cards. At most four uPlot/Canvas instances may be recycled across visible
+routes; every reassignment must update the frozen-window data, loss marks,
+Y range and size before display. Reusing card DOM or Canvas must never show
+stale series. Leaving Charts or hiding the page destroys idle instances and
+zeros backing stores.
+Only the currently owning series request may clear a reused plot's
+`aria-busy` state; a replaced card resets it before starting new work.
 
 ## Explicit Canvas trial entry
 

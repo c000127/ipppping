@@ -579,3 +579,34 @@ manifest SHA-256 均为
 再次验证过滤/统一轴往返与 Canvas、多 Fixed 链路，无脚本错误。
 较早的 `/root/ipppping-backup-20260928T164653244968Z` 仍可用于
 回到本轮显式入口之前。
+
+## 2026-09-29 独立矩阵试用页实例复用
+
+用户验收后继续优化试用页：滚动时最多复用 4 个 uPlot/Canvas 实例，
+同一路由重复提交复用卡片，并修正取消的旧请求短暂清除新请求
+`aria-busy` 的问题；序列缓存上限在 2 MiB 不变的条件下由 8 项增至
+16 项。切至 Results、隐藏页面或离开页面时销毁空闲实例并释放背板。
+不更改主站默认 PNG、服务端限流或节点配置。
+
+本地 480/499 路 Chrome 功能、axe、主站内建发布包与 Python 81 项
+回归通过。完整 60 分钟高频滚动的内存闸门**未通过**：
+Chrome 渲染进程后 30 分钟约 +0.746 MiB/分钟，
+末/前 15 分钟中位数差 +10 MiB，均超过预定门槛。
+因此本次只更新已有的 opt-in 路径，**不批准 G4/G5，
+不把 Canvas 设为默认**。完整测量与限制见 [P4 报告](FRONTEND_P4_REPORT.md)。
+
+构建与 staging `/root/ipppping-stage-pool-oF7BW3bC` 的 manifest
+SHA-256 均为
+`be8b5fc3685564c274568cd618f6e0a6ead364ab87692219b57b83ea9418a62b`。
+`deploy/install-api.py` 检验并安装后生成自动备份
+`/root/ipppping-backup-20260929T090048046875Z`。
+首页 HTML SHA-256 仍为
+`8b4daf2eb5ad5e9de0fbfefff9ddba3d1939c3efe3df31a2cac309df44420364`；
+矩阵页 HTML 为
+`fcc5a6ccdcee1195d0aedb4082f9620011d0f3dcb8c9b16a1453ba5e6a392608`，
+新矩阵脚本为 `chart-matrix-trial.5c45b1f1d5a49654.js`。
+
+发布后低速公网 Chrome 验证双栈序列、多 Fixed 外部链路、
+主站试用入口往返无自动矩阵请求、试用页 Canvas 与主站两张 PNG；
+全部 12 个指纹资源哈希一致、无脚本错误。
+`ipppping` 与 Caddy 均 active、`NRestarts=0`，备份存在。

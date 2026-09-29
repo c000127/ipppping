@@ -106,6 +106,11 @@ const expectedHandoffAsset = '/static/assets/' + Object.keys(release.assets).fin
     const chartReadyMs = Math.round(performance.now() - chartStarted);
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
     assert.equal(await page.locator('.card').count(), 2);
+    await page.evaluate(() => { window.__firstLiveCard = document.querySelector('.card'); });
+    await page.locator('#goBtn').click();
+    await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 2 routes'));
+    assert.equal(await page.evaluate(() => window.__firstLiveCard === document.querySelector('.card')), true,
+      'production trial should reuse same-route cards on refresh');
     assert.deepEqual(await page.locator('.card').first().locator('.badge').allTextContents(), ['Ext', 'v4']);
     assert.deepEqual(await page.locator('#chart-key span').allTextContents(),
       ['Mean median RTT', 'Loss in every bucket', 'Peak within interval']);

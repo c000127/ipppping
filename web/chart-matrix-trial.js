@@ -5,7 +5,7 @@ const ChartMatrixTrial = (() => {
   const $ = id => document.getElementById(id);
   const selected = new Set(), fixed = new Set();
   const seriesPool = new RequestState.Pool(2);
-  const MAX_ACTIVE = 4, MAX_CACHE_COUNT = 8, MAX_CACHE_BYTES = 2 * 1024 * 1024;
+  const MAX_ACTIVE = 4, MAX_CACHE_COUNT = 16, MAX_CACHE_BYTES = 2 * 1024 * 1024;
   const MAX_PIXELS_PER_CHART = 1280 * 220 * 4;
   const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
   const timeFormat = new Intl.DateTimeFormat('en-GB', {
@@ -16,7 +16,9 @@ const ChartMatrixTrial = (() => {
   let draftDur = 10800, appliedDur = 10800, filter = 'all', unified = false, visibleMax = 1;
   let renderedFilter = 'all';
   let appliedSelection = [], appliedFixed = [];
-  let cards = [], active = new Map(), pending = new Map(), near = new Set(), wanted = new Set();
+  let cards = [], active = new Map(), idle = [], chartAllocs = 0;
+  const chartStates = new WeakMap();
+  let pending = new Map(), near = new Set(), wanted = new Set();
   let seriesCache = new Map(), cacheBytes = 0;
   let chartGridColor = null;
   let motionFrame = 0, queryLoading = false, lastMetrics = new Map();
@@ -140,24 +142,40 @@ const ChartMatrixTrial = (() => {
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
   }
 
-  function dispose(index) {
+  function destroyChart(chart) {
+    chart.destroy();
+    // Drop native backing stores when leaving Charts or hiding the document.
+    chart.root.querySelectorAll('canvas').forEach(canvas => { canvas.width = 0; canvas.height = 0; });
+  }
+  function destroyIdle() {
+    for (const chart of idle) destroyChart(chart);
+    idle = [];
+  }
+  function dispose(index, reuse = true) {
     cards[index]?.querySelectorAll('.trial-reveal').forEach(cover => {
       cover.getAnimations().forEach(animation => animation.cancel());
     });
-    active.get(index)?.destroy();
+    const chart = active.get(index);
+    if (chart) {
+      if (reuse && idle.length < MAX_ACTIVE) idle.push(chart);
+      else destroyChart(chart);
+    }
     active.delete(index);
     cards[index]?.querySelector('.trial-plot')?.replaceChildren();
   }
-  function clearWork() {
+  function clearWork(preserveCards = false, keepCharts = false) {
     stopMotion(); revealedRoutes.clear();
     controller?.abort();
     for (const item of pending.values()) item.abort();
     pending.clear();
-    for (const index of [...active.keys()]) dispose(index);
+    for (const index of [...active.keys()]) dispose(index, keepCharts);
+    if (!keepCharts) destroyIdle();
     observer?.disconnect(); near.clear(); wanted.clear();
     seriesCache.clear(); cacheBytes = 0;
-    cards = []; matrix = null; pairs = []; items = [];
-    $('graphGrid').replaceChildren(); $('chart-key').hidden = true;
+    if (!preserveCards) cards = [];
+    matrix = null; pairs = []; items = [];
+    if (!preserveCards) $('graphGrid').replaceChildren();
+    $('chart-key').hidden = true;
   }
   function remember(index, value) {
     const bytes = JSON.stringify(value).length * 2;
@@ -255,6 +273,7 @@ const ChartMatrixTrial = (() => {
         if (peak > mean) lossPeaks.push({ start: c.start[i], end: c.end[i], from: mean, peak });
       } else lossPeaks.push({ start: c.start[i], end: c.end[i], from: 0, peak });
     }
+    const state = { maximum, markColor, lossRuns, lossPeaks };
     const marks = u => {
       const ctx = u.ctx, px = uPlot.pxRatio || window.devicePixelRatio || 1;
       ctx.save(); ctx.beginPath(); ctx.rect(u.bbox.left, u.bbox.top, u.bbox.width, u.bbox.height); ctx.clip();
@@ -265,13 +284,13 @@ const ChartMatrixTrial = (() => {
         ? Math.ceil(u.bbox.left + u.bbox.width) : Math.round(u.valToPos(value, 'x', true));
       const yLoss = value => value <= 0 ? bottom : value >= 100 ? top :
         Math.max(top, Math.min(bottom - 1, Math.round(u.valToPos(value, 'loss', true))));
-      ctx.fillStyle = markColor;
+      ctx.fillStyle = state.markColor;
       ctx.globalAlpha = .65;
-      for (const run of lossRuns) {
+      for (const run of state.lossRuns) {
         const left = xStart(run.start), right = xEnd(run.end), y = yLoss(run.mean);
         if (right > left && y < bottom) ctx.fillRect(left, y, right - left, bottom - y);
       }
-      for (const event of lossPeaks) {
+      for (const event of state.lossPeaks) {
         const left = xStart(event.start), right = xEnd(event.end);
         const high = yLoss(event.peak), low = yLoss(event.from);
         if (right <= left || high >= low) continue;
@@ -281,11 +300,23 @@ const ChartMatrixTrial = (() => {
       }
       ctx.restore();
     };
+    const chartData = [c.end.map((stamp, i) => (c.start[i] + stamp) / 2), c.median_mean_ms,
+      c.loss_max_pct.map(value => value > 0 ? value : null)];
     plot.replaceChildren();
-    const chart = new uPlot({ width, height: 220, legend: { show: false }, select: { show: false },
+    let chart = idle.pop();
+    if (chart) {
+      // Keep at most four native Canvas/uPlot allocations across viewport changes.
+      Object.assign(chartStates.get(chart), state);
+      plot.append(chart.root);
+      try {
+        if (chart.width !== width) chart.setSize({ width, height: 220 });
+        chart.setData(chartData);
+      } catch (error) { destroyChart(chart); throw error; }
+    } else {
+      chart = new uPlot({ width, height: 220, legend: { show: false }, select: { show: false },
       cursor: { show: false }, dom: { over: false, under: false },
       scales: { x: { time: false, range: () => [matrix.end - matrix.dur, matrix.end] },
-        y: { range: () => [0, maximum] }, loss: { range: () => [0, 100] } },
+        y: { range: () => [0, state.maximum] }, loss: { range: () => [0, 100] } },
       series: [{}, { label: 'Mean median ms', stroke: color('--trial-rtt'), width: 2, spanGaps: false, points: { show: false } },
         { label: 'Max loss %', scale: 'loss', stroke: markColor, paths: () => null, points: { show: false } }],
       axes: [{ ...axis, size: 28, space: 76, grid: { show: false },
@@ -295,8 +326,10 @@ const ChartMatrixTrial = (() => {
         { ...axis, scale: 'loss', side: 1, size: 34, labelSize: 18, label: 'Loss %',
           labelFont: font, stroke: markColor, grid: { show: false } }],
       hooks: { draw: [marks] }
-    }, [c.end.map((stamp, i) => (c.start[i] + stamp) / 2), c.median_mean_ms,
-      c.loss_max_pct.map(value => value > 0 ? value : null)], plot);
+      }, chartData, plot);
+      chartStates.set(chart, state);
+      chartAllocs++;
+    }
     chart.root.setAttribute('aria-hidden', 'true');
     active.set(index, chart);
     revealPlot(chart, index);
@@ -329,8 +362,11 @@ const ChartMatrixTrial = (() => {
         plot.classList.add('problem');
       }
     } finally {
-      if (pending.get(index) === local) pending.delete(index);
-      plot.removeAttribute('aria-busy');
+      // A cancelled generation must not clear the loading state of its replacement.
+      if (pending.get(index) === local) {
+        pending.delete(index);
+        plot.removeAttribute('aria-busy');
+      }
     }
   }
   function scheduleVisible() {
@@ -537,7 +573,8 @@ const ChartMatrixTrial = (() => {
   }
   function renderCards({ enter = false, pulse = false } = {}) {
     stopMotion();
-    for (const index of [...active.keys()]) dispose(index);
+    for (const index of [...active.keys()]) dispose(index, appliedMode === 'charts');
+    if (appliedMode !== 'charts') destroyIdle();
     for (const item of pending.values()) item.abort();
     pending.clear(); observer?.disconnect(); near.clear(); wanted.clear();
     cancelAnimationFrame(frame); frame = 0;
@@ -546,6 +583,8 @@ const ChartMatrixTrial = (() => {
     const list = orderedIndexes(pairs.map((pair, index) => matches(pair) ? index : -1).filter(index => index >= 0));
     visibleMax = Math.max(1, ...list.map(index => items[index]?.summary?.max_median_ms || 0)) * 1.1;
     const previous = cards;
+    const stableOrder = list.length > 0 && grid.childElementCount === list.length &&
+      list.every((index, position) => grid.children[position] === previous[index]);
     const palette = lossPalette();
     const pulseByIndex = new Map();
     cards = [];
@@ -567,30 +606,34 @@ const ChartMatrixTrial = (() => {
           '</div><div class="card-right"><div class="stats"></div></div></div>' +
           (appliedMode === 'charts' ? '<div class="card-img trial-plot" role="img" aria-label="Latency line, intervals with loss in every bucket, and peak-loss marks"></div>' : '') +
           '</div>';
-        const stats = statsFor(index);
-        UIComponents.updateStats(card.querySelector('.stats'), stats);
-        const before = pulse && lastMetrics.get(identity(pair) + '|' + appliedMode);
-        if (before && stats) pulseByIndex.set(index, {
-          current: Number.isFinite(stats.current_ms) && stats.current_ms !== before.current_ms,
-          loss: Number.isFinite(stats.loss_pct) && stats.loss_pct > 0 && stats.loss_pct !== before.loss_pct
-        });
-        const loss = stats?.loss_pct;
-        const lossItem = card.querySelector('[data-metric="4"]');
-        if (lossItem) lossItem.style.setProperty('--trial-loss-current', lossColor(loss, palette) || 'var(--text-sec)');
-        if (items[index]?.error) card.classList.add('is-error');
-        if (appliedMode === 'charts' && items[index]?.error) {
-          const plot = card.querySelector('.trial-plot');
-          plot.classList.add('problem'); plot.textContent = 'No chart: ' + items[index].error + '. Submit again to retry.';
-        }
       }
-      cards[index] = card; fragment.append(card);
+      const stats = statsFor(index);
+      UIComponents.updateStats(card.querySelector('.stats'), stats);
+      const before = pulse && lastMetrics.get(identity(pair) + '|' + appliedMode);
+      if (before && stats) pulseByIndex.set(index, {
+        current: Number.isFinite(stats.current_ms) && stats.current_ms !== before.current_ms,
+        loss: Number.isFinite(stats.loss_pct) && stats.loss_pct > 0 && stats.loss_pct !== before.loss_pct
+      });
+      const lossItem = card.querySelector('[data-metric="4"]');
+      if (lossItem) lossItem.style.setProperty('--trial-loss-current', lossColor(stats?.loss_pct, palette) || 'var(--text-sec)');
+      const error = items[index]?.error;
+      card.classList.toggle('is-error', !!error);
+      if (appliedMode === 'charts') {
+        const plot = card.querySelector('.trial-plot');
+        plot.removeAttribute('aria-busy');
+        plot.classList.toggle('problem', !!error);
+        if (error) plot.textContent = 'No chart: ' + error + '. Submit again to retry.';
+        else if (plot.textContent) plot.replaceChildren();
+      }
+      cards[index] = card;
+      if (!stableOrder) fragment.append(card);
     }
     if (!list.length) {
       const empty = document.createElement('div'); empty.className = 'empty no-matches';
       empty.innerHTML = '<div class="empty-title">No matches</div>';
       fragment.append(empty);
     }
-    grid.replaceChildren(fragment);
+    if (!stableOrder) grid.replaceChildren(fragment);
     renderedFilter = filter;
     $('emptyState').hidden = true;
     $('chart-key').hidden = appliedMode !== 'charts' || !list.length;
@@ -629,7 +672,9 @@ const ChartMatrixTrial = (() => {
           (done, total) => { if (token === generation) status('Summaries ' + done + '/' + total + '; charts wait for all pages.'); })
         : await loadResults(selection, fixedIds, dur, controller.signal);
       if (token !== generation) return;
-      clearWork(); queryLoading = false;
+      const preserveCards = appliedMode === mode && pairs.length === loaded.pairs.length &&
+        pairs.every((pair, index) => identity(pair) === identity(loaded.pairs[index]));
+      clearWork(preserveCards, mode === 'charts'); queryLoading = false;
       pairs = loaded.pairs; items = loaded.items;
       appliedSelection = selection; appliedFixed = fixedIds; appliedPairMode = pairing;
       appliedMode = mode; appliedDur = dur; matrix = mode === 'charts' ? loaded : null;
@@ -713,7 +758,8 @@ const ChartMatrixTrial = (() => {
       if (queryLoading) status('Query paused while hidden. Previous results remain visible; submit again.');
       controller?.abort(); generation++; queryLoading = false;
       for (const item of pending.values()) item.abort();
-      for (const index of [...active.keys()]) dispose(index);
+      for (const index of [...active.keys()]) dispose(index, false);
+      destroyIdle();
       if (pairs.length && renderedFilter !== filter) renderCards();
       if (!matrix && !pairs.length) status('Paused while hidden. Submit again to load measurements.');
     } else if (matrix) observe();
@@ -723,7 +769,8 @@ const ChartMatrixTrial = (() => {
     queryLoading = false;
     controller?.abort(); generation++;
     for (const item of pending.values()) item.abort();
-    for (const index of [...active.keys()]) dispose(index);
+    for (const index of [...active.keys()]) dispose(index, false);
+    destroyIdle();
     observer?.disconnect(); near.clear(); wanted.clear(); cancelAnimationFrame(frame);
   });
   window.addEventListener('pageshow', event => { if (event.persisted && matrix) observe(); });
@@ -750,7 +797,14 @@ const ChartMatrixTrial = (() => {
     $('sidebarInner').innerHTML = '<div class="empty"><div class="empty-title">Node list unavailable</div></div>';
     status('Node list failed: ' + error.message);
   });
-  return { get instanceCount() { return active.size; }, get cacheCount() { return seriesCache.size; },
+  return { get instanceCount() { return active.size; }, get pooledCount() { return idle.length; },
+    get chartAllocations() { return chartAllocs; },
+    get backingPixels() {
+      return [...active.values(), ...idle].reduce((total, chart) =>
+        total + [...chart.root.querySelectorAll('canvas')].reduce((sum, canvas) =>
+          sum + canvas.width * canvas.height, 0), 0);
+    },
+    get cacheCount() { return seriesCache.size; },
     get cacheBytes() { return cacheBytes; }, get pendingCount() { return pending.size; },
     get queryLoading() { return queryLoading; },
     get matrix() { return matrix; }, get mode() { return appliedMode; }, get pairs() { return pairs; },

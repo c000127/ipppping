@@ -56,7 +56,7 @@ const origin = process.env.IPPPPING_SITE || 'https://ipppping.hachimihaqile.top'
     await cdp.detach();
     await page.locator('#mainArea').evaluate(main => { main.scrollTop = main.scrollHeight; });
     await page.waitForTimeout(800);
-    assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.cacheCount <= 8));
+    assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.cacheCount <= 16));
     assert.equal(requests.filter(route => route === '/api/v2/summary-batch').length, 15);
     assert.ok(requests.filter(route => route === '/api/v2/series').length <= 12);
     assert.deepEqual(badResponses, []);

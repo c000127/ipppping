@@ -6,14 +6,19 @@ const http = require('node:http');
 const { execFileSync } = require('node:child_process');
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
+const releaseRoot = process.env.TEST_RELEASE_ROOT || 'build/web-release';
+assert.match(releaseRoot, /^build\/web-release(?:-[a-z0-9-]+)?$/);
 const trialSource = fs.readFileSync(path.join(root, 'web/chart-matrix-trial.js'), 'utf8');
-assert.doesNotMatch(trialSource, /ctx\.arc\(|ctx\.moveTo\(/, 'no per-sample cursor-like marks');
+assert.doesNotMatch(trialSource, /ctx\.arc\(|ctx\.moveTo\(/, 'no per-sample cursor-like glyphs');
 const nodes = Array.from({ length: 16 }, (_, i) => ({ id: `v${i}`, label: `VPS ${i}`, group: 'vps', v4: true, v6: true }));
 nodes.push({ id: 'ext', label: 'External', group: 'dns', v4: true, v6: true });
+nodes.push({ id: 'v16', label: 'VPS 16 v4', group: 'vps', v4: true, v6: false });
+nodes.push({ id: 'v17', label: 'VPS 17 v4', group: 'vps', v4: true, v6: false });
+nodes.push({ id: 'ext4', label: 'External v4', group: 'dns', v4: true, v6: false });
 const requests = [];
 let lastRoutes = [];
 let partialMissing = false;
-let statsEpoch = 0, statsDelayMs = 0, summaryDelayMs = 0, failNextStats = false;
+let statsEpoch = 0, statsDelayMs = 0, summaryDelayMs = 0, seriesDelayMs = 0, failNextStats = false;
 async function chromePrivateMemory(session) {
   if (!session || process.platform !== 'win32') return null;
   const info = await session.send('SystemInfo.getProcessInfo');
@@ -26,9 +31,14 @@ async function chromePrivateMemory(session) {
   if (!raw) return null;
   const values = JSON.parse(raw), list = Array.isArray(values) ? values : [values];
   const types = new Map(info.processInfo.map(item => [item.id, item.type]));
+  const privateByType = {};
+  for (const item of list) {
+    const type = types.get(item.Id) || 'unknown';
+    privateByType[type] = (privateByType[type] || 0) + item.PrivateMemorySize64;
+  }
   return { processPrivateBytes: list.reduce((sum, item) => sum + item.PrivateMemorySize64, 0),
     gpuPrivateBytes: list.filter(item => types.get(item.Id) === 'GPU')
-      .reduce((sum, item) => sum + item.PrivateMemorySize64, 0) };
+      .reduce((sum, item) => sum + item.PrivateMemorySize64, 0), privateByType };
 }
 function pairs(query) {
   const chosen = nodes.filter(node => query.get('nodes').split(',').includes(node.id));
@@ -39,13 +49,14 @@ function pairs(query) {
     combinations.push([chosen[i], chosen[j]]);
   }
   return combinations.flatMap(([a, b]) => {
+    const protocols = ['v4', 'v6'].filter(type => a[type] && b[type]);
     if (a.group === 'dns' || b.group === 'dns') {
       const source = a.group === 'dns' ? b : a, target = a.group === 'dns' ? a : b;
-      return ['v4', 'v6'].map(type => ({ source: source.id, target: target.id, type,
+      return protocols.map(type => ({ source: source.id, target: target.id, type,
         srcLabel: source.label, tgtLabel: target.label, ext: true,
         pairKey: [a.id, b.id].join('_'), direction: 0 }));
     }
-    return [[a, b], [b, a]].flatMap(([source, target]) => ['v4', 'v6'].map(type => ({
+    return [[a, b], [b, a]].flatMap(([source, target]) => protocols.map(type => ({
       source: source.id, target: target.id, type, srcLabel: source.label, tgtLabel: target.label,
       ext: false, pairKey: [a.id, b.id].join('_'), direction: source.id === a.id ? 0 : 1
     })));
@@ -141,12 +152,15 @@ const server = http.createServer((req, res) => {
         count: [1, 1], median_mean_ms: [10, 10], min_median_ms: [10, 10], max_median_ms: [10, 10],
         loss_mean_pct: [0, 0], loss_max_pct: [0, 0], loss_event_count: [0, 0],
         full_loss_count: [0, 0], missing_latency_count: [0, 0], missing_measurement_count: [0, 0] };
-      res.end(JSON.stringify(data)); return;
+      const body = JSON.stringify(data);
+      if (seriesDelayMs) setTimeout(() => { if (!res.destroyed) res.end(body); }, seriesDelayMs);
+      else res.end(body);
+      return;
     }
     res.writeHead(404).end(); return;
   }
-  const relative = pathname === '/chart-matrix-trial' ? 'build/web-release/chart-matrix-trial.html'
-    : pathname.startsWith('/static/assets/') ? 'build/web-release/assets/' + path.basename(pathname)
+  const relative = pathname === '/chart-matrix-trial' ? releaseRoot + '/chart-matrix-trial.html'
+    : pathname.startsWith('/static/assets/') ? releaseRoot + '/assets/' + path.basename(pathname)
     : pathname.startsWith('/static/fonts/') ? 'web/fonts/' + path.basename(pathname) : null;
   if (!relative) { res.writeHead(404).end(); return; }
   try {
@@ -211,7 +225,7 @@ const server = http.createServer((req, res) => {
     await assertSegment('#filterPills');
     await assertSegment('#pairMode');
     await assertSegment('#viewMode');
-    assert.equal(await page.locator('.node').count(), 17);
+    assert.equal(await page.locator('.node').count(), nodes.length);
     assert.equal(await page.locator('#chart-key').isVisible(), false);
     assert.deepEqual(requests, ['/api/nodes']);
     for (const id of ['v0', 'v1', 'ext'])
@@ -220,6 +234,9 @@ const server = http.createServer((req, res) => {
     await page.locator('#goBtn').click();
     await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 8 routes'));
     assert.equal(await page.locator('.card').count(), 8);
+    const resultsAx = await page.locator('.card').first().ariaSnapshot();
+    for (const metric of ['CURRENT', 'AVG', 'MIN', 'MAX', 'LOSS'])
+      assert.ok(resultsAx.toLowerCase().includes(metric.toLowerCase()), `Results AX missing ${metric}: ${resultsAx}`);
     assert.equal(requests.filter(route => route === '/api/stats-batch.json').length, 1);
     assert.equal(requests.filter(route => route === '/api/v2/series').length, 0);
     assert.match(await page.locator('#selFreshness').textContent(), /^Updated \d\d:\d\d$/);
@@ -233,11 +250,21 @@ const server = http.createServer((req, res) => {
     await page.locator('[data-filter="all"]').click();
     assert.equal(await page.locator('.card').count(), 8);
     assert.equal(await page.locator('.card').first().locator('[data-metric="0"] .stat-number').textContent(), '10.0');
+    await page.evaluate(() => {
+      window.__firstResultsCard = document.querySelector('.card');
+      window.__oldPairKeys = ChartMatrixTrial.pairs.map(pair => [pair.source, pair.target, pair.type].join(':'));
+    });
     statsEpoch = 1; statsDelayMs = 300;
     await page.locator('#goBtn').click();
     assert.match(await page.locator('#trialStatus').textContent(), /Loading Results/);
     assert.equal(await page.locator('.card').count(), 8, 'pending refresh must not blank the grid');
     await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 8 routes'));
+    const reuseResult = await page.evaluate(() => ({ same: window.__firstResultsCard === document.querySelector('.card'),
+      connected: window.__firstResultsCard.isConnected, oldKey: window.__firstResultsCard.dataset.cardKey,
+      newKey: document.querySelector('.card')?.dataset.cardKey,
+      samePairs: JSON.stringify(window.__oldPairKeys) === JSON.stringify(ChartMatrixTrial.pairs.map(pair =>
+        [pair.source, pair.target, pair.type].join(':'))) }));
+    assert.equal(reuseResult.same, true, 'same-route Results refresh should reuse the card DOM: ' + JSON.stringify(reuseResult));
     await page.waitForFunction(() => document.querySelector('.card [data-metric="0"] .stat-value')?.getAnimations().length > 0);
     const pulses = await page.evaluate(() => {
       const cards = [...document.querySelectorAll('.card')];
@@ -324,6 +351,9 @@ const server = http.createServer((req, res) => {
     await page.locator('.trial-reveal').first().waitFor({ state: 'detached' });
     assert.equal(await page.locator('#chart-key').isVisible(), true);
     assert.equal(await page.locator('.trial-plot').count(), 8);
+    const chartsAx = await page.locator('.card').first().ariaSnapshot();
+    for (const metric of ['CURRENT', 'AVG', 'MIN', 'MAX', 'LOSS'])
+      assert.ok(chartsAx.toLowerCase().includes(metric.toLowerCase()), `Charts AX missing ${metric}: ${chartsAx}`);
     assert.equal(await page.locator('.card .badge-ext').count(), 4);
     await assertFiveColumnDesign();
     assert.deepEqual(await page.locator('#chart-key span').allTextContents(),
@@ -385,14 +415,88 @@ const server = http.createServer((req, res) => {
     assert.ok(span.x <= clip.x && span.x + span.width >= clip.x + clip.width &&
       span.y <= clip.y && span.y + span.height >= clip.y + clip.height, JSON.stringify(span));
     fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
-    await page.locator('.card').filter({ hasText: '100.0%' }).first().screenshot({
-      path: path.join(root, 'test-results/p4-matrix-all-loss.png') });
+    const allLossCard = page.locator('.card').filter({ hasText: '100.0%' }).first();
+    await allLossCard.scrollIntoViewIfNeeded();
+    await allLossCard.locator('.trial-reveal').waitFor({ state: 'detached' });
+    await allLossCard.screenshot({ path: path.join(root, 'test-results/p4-matrix-all-loss.png') });
+    const allLossImage = await allLossCard.locator('canvas').screenshot();
+    for (const fraction of [0, 1]) {
+      await page.locator('#mainArea').evaluate((main, part) => {
+        main.scrollTop = part * (main.scrollHeight - main.clientHeight);
+      }, fraction);
+      await page.waitForTimeout(250);
+    }
+    await allLossCard.scrollIntoViewIfNeeded();
+    await allLossCard.locator('canvas').waitFor();
+    assert.equal((await allLossCard.locator('canvas').screenshot()).equals(allLossImage), true,
+      'pooled chart reassignment must preserve full-loss marks on return');
     const graphic = page.locator('.trial-plot .uplot').first();
     await graphic.hover();
     assert.equal(await page.locator('.u-cursor-x,.u-cursor-y').count(), 0);
     assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--trial-rule').trim()),
       await page.evaluate(() => ChartMatrixTrial.gridColor));
     assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.pendingCount <= 4));
+    seriesDelayMs = 5000;
+    await page.evaluate(() => {
+      window.__nativeFetch = window.fetch;
+      const race = window.__seriesRace = {
+        started: 0, urls: [], abortPending: 0, abortSettled: 0,
+        release: [], holdAborts: true, mutations: []
+      };
+      window.fetch = (url, options) => {
+        const isSeries = String(url).startsWith('/api/v2/series?');
+        if (isSeries) { race.started++; race.urls.push(String(url)); }
+        const result = window.__nativeFetch(url, options);
+        if (!isSeries) return result;
+        return result.catch(error => error.name === 'AbortError' && race.holdAborts
+          ? new Promise((resolve, reject) => {
+            race.abortPending++;
+            race.release.push(() => { race.abortSettled++; reject(error); });
+          })
+          : Promise.reject(error));
+      };
+    });
+    await page.locator('#goBtn').click();
+    await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 8 routes'));
+    await page.waitForFunction(() => window.__seriesRace.started >= 2);
+    const activeIndex = await page.evaluate(() => {
+      const url = new URL(window.__seriesRace.urls[0], location.href);
+      return ChartMatrixTrial.pairs.findIndex(pair => pair.source === url.searchParams.get('source') &&
+        pair.target === url.searchParams.get('target') && pair.type === url.searchParams.get('type'));
+    });
+    assert.ok(activeIndex >= 0);
+    const ownedPlot = await page.locator(`.card[data-index="${activeIndex}"] .trial-plot`).elementHandle();
+    const firstStarted = await page.evaluate(() => window.__seriesRace.started);
+    await page.locator('#goBtn').click();
+    await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 8 routes'));
+    await page.waitForFunction(() => window.__seriesRace.abortPending >= 2);
+    await page.waitForFunction(plot => plot.getAttribute('aria-busy') === 'true', ownedPlot);
+    assert.equal(await page.evaluate(() => window.__seriesRace.started), firstStarted,
+      'replacement series must remain queued until the old fetch settles');
+    await ownedPlot.evaluate(plot => {
+      window.__seriesRace.observer = new MutationObserver(() => {
+        window.__seriesRace.mutations.push(plot.getAttribute('aria-busy'));
+      });
+      window.__seriesRace.observer.observe(plot, { attributes: true, attributeFilter: ['aria-busy'] });
+    });
+    await page.evaluate(() => {
+      window.__seriesRace.holdAborts = false;
+      window.__seriesRace.release.splice(0).forEach(release => release());
+    });
+    await page.waitForFunction(() => window.__seriesRace.abortSettled >= 2);
+    await page.waitForTimeout(100);
+    assert.deepEqual(await page.evaluate(() => window.__seriesRace.mutations), [],
+      'cancelled series must not briefly clear the replacement loading state');
+    assert.equal(await ownedPlot.getAttribute('aria-busy'), 'true',
+      'cancelled series must not clear the replacement request loading state');
+    await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    seriesDelayMs = 0;
+    await page.evaluate(() => {
+      window.__seriesRace.observer.disconnect();
+      window.fetch = window.__nativeFetch;
+      delete window.__nativeFetch;
+      delete window.__seriesRace;
+    });
     await page.locator('#unifiedAxisToggle').check();
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
     await page.locator('#unifiedAxisToggle').uncheck();
@@ -402,12 +506,18 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.evaluate(() => ChartMatrixTrial.queryLoading), true);
     assert.ok(await page.locator('.trial-plot .uplot').count() > 0,
       'old charts stay visible while a new summary is pending');
-    await page.evaluate(() => {
+    const hiddenState = await page.evaluate(() => {
+      const canvas = document.querySelector('.trial-plot canvas');
       Object.defineProperty(document, 'hidden', { configurable: true, value: true });
       document.dispatchEvent(new Event('visibilitychange'));
+      const state = { active: ChartMatrixTrial.instanceCount, pooled: ChartMatrixTrial.pooledCount,
+        canvasWidth: canvas?.width, canvasHeight: canvas?.height };
       delete document.hidden;
       document.dispatchEvent(new Event('visibilitychange'));
+      return state;
     });
+    assert.deepEqual(hiddenState, { active: 0, pooled: 0, canvasWidth: 0, canvasHeight: 0 },
+      'hiding the page should destroy pooled plots and release native backing stores');
     await page.waitForFunction(() => !ChartMatrixTrial.queryLoading && ChartMatrixTrial.instanceCount > 0);
     assert.equal(await page.locator('.card').count(), 8);
     assert.match(await page.locator('#trialStatus').textContent(), /Previous results remain visible/);
@@ -423,12 +533,19 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.locator('.card').count(), 4);
     assert.equal(await page.locator('.card .badge-ext').count(), 4);
     assert.equal(await page.evaluate(() => ChartMatrixTrial.pairs.every(pair => pair.ext)), true);
+    await page.evaluate(() => { window.__firstChartsCard = document.querySelector('.card'); });
     partialMissing = true;
     await page.locator('#goBtn').click();
     await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 4 routes'));
+    assert.equal(await page.evaluate(() => window.__firstChartsCard === document.querySelector('.card')), true,
+      'same-route Charts refresh should reuse the card DOM');
     assert.equal(await page.locator('.trial-plot.problem').count(), 1);
     assert.match(await page.locator('.trial-plot.problem').textContent(), /No chart: no_data/);
     partialMissing = false;
+    await page.locator('#goBtn').click();
+    await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 4 routes'));
+    assert.equal(await page.locator('.trial-plot.problem').count(), 0,
+      'a recovered route must clear the prior error from its reused card');
     await page.locator('#toggleSidebar').click();
     assert.equal(await page.locator('#sidebar').getAttribute('aria-hidden'), 'true');
     await page.waitForTimeout(260);
@@ -469,7 +586,7 @@ const server = http.createServer((req, res) => {
     assert.equal(requests.slice(prior).filter(route => route === '/api/v2/summary-batch').length, 15);
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
     assert.ok(requests.slice(prior).filter(route => route === '/api/v2/series').length < 20);
-    assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.cacheCount <= 8));
+    assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.cacheCount <= 16));
     const filterMs = await page.evaluate(async () => {
       const start = performance.now();
       document.querySelector('[data-filter="v4"]').click();
@@ -479,12 +596,37 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.locator('.card').count(), 240);
     await page.locator('[data-filter="all"]').click();
     assert.equal(await page.locator('.card').count(), 480);
+    await page.locator('#mainArea').evaluate(main => { main.scrollTop = 0; });
+    await page.waitForFunction(() => document.querySelector('.card canvas'));
+    const retainedCanvas = await page.locator('.card canvas').first().elementHandle();
+    const retainedIndex = await retainedCanvas.evaluate(canvas => canvas.closest('.card').dataset.index);
+    const firstImage = await page.locator(`.card[data-index="${retainedIndex}"] canvas`).screenshot();
+    await page.waitForFunction(() => ChartMatrixTrial.instanceCount + ChartMatrixTrial.pooledCount === 4);
+    const allocationsBeforeScroll = await page.evaluate(() => ChartMatrixTrial.chartAllocations);
     await page.locator('#mainArea').evaluate(main => { main.scrollTop = main.scrollHeight; });
     await page.waitForTimeout(600);
-    assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.cacheCount <= 8));
+    assert.equal(await retainedCanvas.evaluate(canvas => canvas.width > 0 && canvas.height > 0), true,
+      'a pooled Canvas should retain its backing store for a later visible route');
+    assert.equal(await page.evaluate(() => ChartMatrixTrial.chartAllocations), allocationsBeforeScroll,
+      'scrolling should recycle the four existing chart instances');
+    await page.locator('#mainArea').evaluate(main => { main.scrollTop = 0; });
+    await page.waitForFunction(index => document.querySelector(`.card[data-index="${index}"] canvas`), retainedIndex);
+    assert.equal((await page.locator(`.card[data-index="${retainedIndex}"] canvas`).screenshot()).equals(firstImage), true,
+      'a recycled chart must redraw the original route with the same frozen data');
+    assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount + ChartMatrixTrial.pooledCount <= 4));
+    assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount <= 4 && ChartMatrixTrial.cacheCount <= 16));
     const soakSeconds = Number(process.env.SOAK_SECONDS || 0);
     const samples = [];
     if (soakSeconds > 0) {
+      const soakPattern = process.env.SOAK_PATTERN || 'scroll';
+      const soakView = process.env.SOAK_VIEW || 'charts';
+      assert.ok(['scroll', 'static'].includes(soakPattern));
+      assert.ok(['charts', 'results'].includes(soakView));
+      if (soakView === 'results') {
+        await page.locator('[data-mode="stats"]').click();
+        await page.locator('#goBtn').click();
+        await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 480 routes'));
+      }
       const cdp = await page.context().newCDPSession(page);
       const browserCdp = process.platform === 'win32' ? await browser.newBrowserCDPSession() : null;
       await cdp.send('Performance.enable');
@@ -492,7 +634,10 @@ const server = http.createServer((req, res) => {
         await cdp.send('HeapProfiler.collectGarbage');
         const [dom, perf, client] = await Promise.all([
           cdp.send('Memory.getDOMCounters'), cdp.send('Performance.getMetrics'),
-          page.evaluate(() => ({ instances: ChartMatrixTrial.instanceCount, cache: ChartMatrixTrial.cacheCount,
+          page.evaluate(() => ({ instances: ChartMatrixTrial.instanceCount,
+            pooled: ChartMatrixTrial.pooledCount, allocations: ChartMatrixTrial.chartAllocations,
+            backingPixels: ChartMatrixTrial.backingPixels,
+            cache: ChartMatrixTrial.cacheCount,
             cacheBytes: ChartMatrixTrial.cacheBytes, pending: ChartMatrixTrial.pendingCount,
             canvases: document.querySelectorAll('canvas').length,
             pixels: [...document.querySelectorAll('canvas')].reduce((sum, canvas) => sum + canvas.width * canvas.height, 0) }))
@@ -500,15 +645,16 @@ const server = http.createServer((req, res) => {
         const heap = perf.metrics.find(metric => metric.name === 'JSHeapUsedSize')?.value;
         const row = { elapsed, ...dom, heap, ...client, ...await chromePrivateMemory(browserCdp) };
         samples.push(row);
-        assert.ok(row.instances <= 4 && row.cache <= 8 && row.cacheBytes <= 2 * 1024 * 1024);
-        assert.ok(row.pending <= 4 && row.canvases <= 4 && row.pixels <= 4 * 1280 * 220 * 4);
+        assert.ok(row.instances + row.pooled <= 4 && row.cache <= 16 && row.cacheBytes <= 2 * 1024 * 1024);
+        assert.ok(row.pending <= 4 && row.canvases <= 4 && row.pixels <= 4 * 1280 * 220 * 4 &&
+          row.backingPixels <= 4 * 1280 * 220 * 4);
       };
       const started = Date.now();
       let cycle = 0, previousSample = 0, submits = 0;
       const submitMs = [];
       await sample(0);
       while (Date.now() - started < soakSeconds * 1000) {
-        await page.locator('#mainArea').evaluate((main, fraction) => {
+        if (soakPattern === 'scroll') await page.locator('#mainArea').evaluate((main, fraction) => {
           main.scrollTop = fraction * (main.scrollHeight - main.clientHeight);
         }, (cycle % 3) / 2);
         await page.waitForTimeout(2000);
@@ -516,7 +662,7 @@ const server = http.createServer((req, res) => {
           const submittedAt = Date.now();
           await page.locator('#goBtn').click();
           await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 480 routes'));
-          await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+          if (soakView === 'charts') await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
           submitMs.push(Date.now() - submittedAt);
           submits++;
           assert.equal(await page.locator('.card').count(), 480);
@@ -526,9 +672,13 @@ const server = http.createServer((req, res) => {
         cycle++;
       }
       await sample(Date.now() - started);
-      const target = path.join(root, 'test-results/p4-matrix-browser-soak-' + soakSeconds + 's.json');
+      const label = process.env.SOAK_LABEL || '';
+      assert.match(label, /^[a-z0-9-]*$/, 'SOAK_LABEL must be lowercase letters, digits or hyphens');
+      const target = path.join(root, 'test-results/p4-matrix-browser-soak-' + soakSeconds + 's' +
+        (label ? '-' + label : '') + '.json');
       fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.writeFileSync(target, JSON.stringify({ soakSeconds, cycles: cycle, submits, submitMs,
+      fs.writeFileSync(target, JSON.stringify({ soakSeconds, soakPattern, soakView, releaseRoot,
+        cycles: cycle, submits, submitMs,
         summaryRequests: requests.filter(route => route === '/api/v2/summary-batch').length,
         seriesRequests: requests.filter(route => route === '/api/v2/series').length,
         samples, errors }, null, 2));
@@ -537,6 +687,28 @@ const server = http.createServer((req, res) => {
       await browserCdp?.detach();
     }
     assert.equal(errors.length, 0, errors.join('\n'));
+    const capPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const capErrors = [];
+    capPage.on('pageerror', error => capErrors.push(error.message));
+    await capPage.goto(origin + '/chart-matrix-trial');
+    await capPage.locator('.node').first().waitFor();
+    for (const id of [...Array.from({ length: 15 }, (_, i) => `v${i}`), 'v16', 'v17', 'ext4'])
+      await capPage.locator(`.node[data-node-id="${id}"] .node-select`).click();
+    await capPage.locator('[data-mode="charts"]').click();
+    assert.match(await capPage.locator('#selSummary').textContent(), /18 nodes.*499 results/);
+    const capRequestStart = requests.length;
+    await capPage.locator('#goBtn').click();
+    await capPage.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 499 routes'));
+    assert.equal(await capPage.locator('.card').count(), 499);
+    assert.equal(await capPage.locator('.card .badge-v4').count(), 289);
+    assert.equal(await capPage.locator('.card .badge-v6').count(), 210);
+    assert.equal(await capPage.locator('.card .badge-ext').count(), 17);
+    assert.equal(await capPage.locator('.card:has(.badge-ext) .badge-v6').count(), 0);
+    assert.equal(requests.slice(capRequestStart).filter(route => route === '/api/v2/summary-batch').length, 16);
+    await capPage.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+    assert.ok(await capPage.evaluate(() => ChartMatrixTrial.instanceCount + ChartMatrixTrial.pooledCount <= 4));
+    assert.deepEqual(capErrors, []);
+    await capPage.close();
     const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3.5 });
     const mobileErrors = [];
     mobile.on('pageerror', error => mobileErrors.push(error.message));

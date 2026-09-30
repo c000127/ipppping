@@ -259,7 +259,8 @@ node tests/production-main-observe.cjs
 
 Use installed Chrome and the project's test runtime. The script reads
 production and writes only an ignored local report; it cannot deploy, restart,
-delete, or touch nodes. Its 24/48-hour gate needs continuous sampled evidence,
+delete, or touch nodes. Its 12-hour gate needs ≥13 passing baseline/hourly
+samples covering at least 12 actual hours with distinct hourly bins,
 not two endpoints. Stop after the finite window and investigate failures;
 never reset timestamps to turn missing coverage into a pass.
 

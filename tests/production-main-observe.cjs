@@ -80,9 +80,9 @@ const row = { checkedAt: new Date().toISOString(), passed: false, hours: (Date.n
 })().catch(error => { row.error = error.message; process.exitCode = 1; })
   .finally(() => {
     report.samples.push(row);
-    report.complete24h = observation.complete(report.samples, report.startedAt, 24);
-    report.complete48h = observation.complete(report.samples, report.startedAt, 48);
+    report.requiredHours = observation.REQUIRED_HOURS;
+    report.complete12h = observation.complete(report.samples, report.startedAt);
     fs.mkdirSync(path.dirname(reportPath), { recursive: true });
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
-    console.log(JSON.stringify({ ...row, complete24h: report.complete24h, complete48h: report.complete48h }, null, 2));
+    console.log(JSON.stringify({ ...row, requiredHours: report.requiredHours, complete12h: report.complete12h }, null, 2));
   });

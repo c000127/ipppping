@@ -4,7 +4,7 @@ Updated 2026-09-30. The main page directly integrates the shared renderer at
 `/?renderer=canvas`, rather than redirecting to trial HTML. Production still
 defaults to PNG. The final default-build G4 run was interrupted and cannot
 be accepted; automated follow-up is paused. G5 default promotion/rollback
-and 24–48-hour observation have not started.
+and the now-required 12-hour observation have not started.
 
 ## Implemented boundaries
 
@@ -103,8 +103,10 @@ PID/start/restarts; failure attempts verified PNG recovery.
 
 `tests/production-main-observe.cjs` takes low-rate read-only samples from the
 actual final default restoration. Timestamp/fingerprint cannot be silently
-reset or mixed. Completion needs ≥25/49 passing samples spanning 24/48 real
-hours, distinct hourly bins, baseline within 15 minutes and no >2-hour gaps.
+reset or mixed. Per the user's 2026-09-30 revision, completion needs ≥13
+passing samples spanning 12 real hours, distinct hourly bins, baseline within
+15 minutes and no >2-hour gaps. The report uses `requiredHours=12` and
+`complete12h`; the former 24/48-hour requirements are superseded.
 Two endpoints do not count; gaps/failures remain incomplete, never inferred
 successful solely from elapsed time.
 
@@ -137,3 +139,9 @@ append synthetic samples or treat the previous partial run as acceptance.
 Implementation/source commit: `a32fa4c641bcd625697fcbf5cb1d47b96d1e362e`.
 It contains the deployed candidate frontend bytes; subsequent documentation
 commits do not change their fingerprints.
+
+The user subsequently shortened production observation to 12 hours. The same
+paused follow-up now has a 12-hour name/acceptance prompt and at most 16 hourly
+runs (preflight/scheduling margin, not a 16-hour observation requirement).
+It remains paused: changing duration does not authorize restarting the
+interrupted G4 run or skipping default rollback. Completion stops follow-up.

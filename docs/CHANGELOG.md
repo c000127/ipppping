@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-30 — Observation duration revision
+
+- Changed production acceptance from 24–48 hours to 12 hours at the user's
+  request: baseline plus ≥12 hourly checks spanning 12 actual hours.
+- Updated the report to `complete12h`, tests, current plan and finite follow-up;
+  historical records remain historical. Follow-up stays paused; G4 and
+  default rollback requirements are unchanged. No production deployment.
+
 ## 2026-09-30 — Shared main-page Canvas candidate
 
 - Integrated bounded Canvas into the actual main page, preserving drafts,

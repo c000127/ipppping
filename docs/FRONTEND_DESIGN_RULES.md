@@ -91,8 +91,31 @@ routes; every reassignment must update the frozen-window data, loss marks,
 Y range and size before display. Reusing card DOM or Canvas must never show
 stale series. Leaving Charts or hiding the page destroys idle instances and
 zeros backing stores.
+After a WAAPI effect completes, remove its cleanup listeners and cancel the
+finished effect so a detached reveal cover cannot keep a forwards-filled
+animation alive. Its final visual state must already match normal CSS.
 Only the currently owning series request may clear a reused plot's
 `aria-busy` state; a replaced card resets it before starting new work.
+
+## On-demand interval data
+
+The trial plot is a keyboard-focusable button that opens one native modal
+dialog on click, Enter or Space. Do not add permanent per-card toolbars or
+prebuild tables for every route. Generate at most 120 rows from the same
+validated, frozen-window series used by the chart; share cached/in-flight
+work. Pin the inspected route inside the existing four-route work budget,
+not a separate request queue. Show mean median RTT, mean/peak loss and
+bucket counts, including full-loss, missing measurement and missing RTT.
+Missing values must read `Missing`, never zero. Visible interval boundaries
+include seconds; accessible time labels and ISO datetime attributes retain
+the full date and UTC+08:00 context, including midnight crossings.
+
+Close/Escape clears the table DOM and restores plot focus without scrolling.
+The modal's Escape must not open the sidebar. Query replacement, filtering,
+page hiding and page exit close the modal. On narrow screens, center the
+borderless dialog inside the viewport and scroll the table internally;
+never overflow the page. These details do not restore a Last measurement
+line or freshness badges inside result cards.
 
 ## Explicit Canvas trial entry
 

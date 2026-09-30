@@ -3,11 +3,16 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
+const { createHash } = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
 const releaseRoot = process.env.TEST_RELEASE_ROOT || 'build/web-release';
 assert.match(releaseRoot, /^build\/web-release(?:-[a-z0-9-]+)?$/);
+const manifestBytes = fs.readFileSync(path.join(root, releaseRoot, 'manifest.json'));
+const releaseManifestSha256 = createHash('sha256').update(manifestBytes).digest('hex');
+const chartAsset = Object.keys(JSON.parse(manifestBytes).assets).find(name => name.startsWith('chart-matrix-trial.') && name.endsWith('.js'));
+const harnessSha256 = createHash('sha256').update(fs.readFileSync(__filename)).digest('hex');
 const trialSource = fs.readFileSync(path.join(root, 'web/chart-matrix-trial.js'), 'utf8');
 assert.doesNotMatch(trialSource, /ctx\.arc\(|ctx\.moveTo\(/, 'no per-sample cursor-like glyphs');
 const nodes = Array.from({ length: 16 }, (_, i) => ({ id: `v${i}`, label: `VPS ${i}`, group: 'vps', v4: true, v6: true }));
@@ -19,6 +24,10 @@ const requests = [];
 let lastRoutes = [];
 let partialMissing = false;
 let statsEpoch = 0, statsDelayMs = 0, summaryDelayMs = 0, seriesDelayMs = 0, failNextStats = false;
+let failSeries = false;
+const fixturePoints = Number(process.env.MATRIX_SERIES_POINTS || 2);
+assert.ok([2, 120].includes(fixturePoints));
+let denseSeries = fixturePoints === 120;
 async function chromePrivateMemory(session) {
   if (!session || process.platform !== 'win32') return null;
   const info = await session.send('SystemInfo.getProcessInfo');
@@ -114,6 +123,9 @@ const server = http.createServer((req, res) => {
       return;
     }
     if (pathname === '/api/v2/series') {
+      if (failSeries && url.searchParams.get('source') === 'v0' && url.searchParams.get('target') === 'v1') {
+        res.writeHead(500).end(JSON.stringify({ error: 'simulated series failure' })); return;
+      }
       const pair = { source: url.searchParams.get('source'), target: url.searchParams.get('target'), type: url.searchParams.get('type') };
       const index = routes.findIndex(value => value.source === pair.source && value.target === pair.target && value.type === pair.type);
       const data = summary(pair, end, dur, index + 10);
@@ -148,6 +160,14 @@ const server = http.createServer((req, res) => {
           loss_event_count: bins.map(() => 1), full_loss_count: bins.map(() => 1),
           missing_latency_count: bins.map(() => 1), missing_measurement_count: bins.map(() => 0)
         };
+      } else if (denseSeries) {
+        const bins = Array.from({ length: 120 }, (_, i) => i);
+        data.columns = { start: bins.map(i => start + i * dur / 120),
+          end: bins.map(i => start + (i + 1) * dur / 120), count: bins.map(() => 1),
+          median_mean_ms: bins.map(() => 10), min_median_ms: bins.map(() => 10), max_median_ms: bins.map(() => 10),
+          loss_mean_pct: bins.map(() => 0), loss_max_pct: bins.map(() => 0), loss_event_count: bins.map(() => 0),
+          full_loss_count: bins.map(() => 0), missing_latency_count: bins.map(() => 0),
+          missing_measurement_count: bins.map(() => 0) };
       } else data.columns = { start: [start, start + dur / 2], end: [start + dur / 2, end],
         count: [1, 1], median_mean_ms: [10, 10], min_median_ms: [10, 10], max_median_ms: [10, 10],
         loss_mean_pct: [0, 0], loss_max_pct: [0, 0], loss_event_count: [0, 0],
@@ -169,7 +189,19 @@ const server = http.createServer((req, res) => {
   } catch { res.writeHead(404).end(); }
 });
 
-(async () => {
+if (process.env.MATRIX_FIXTURE_ONLY === '1') {
+  server.listen(0, '127.0.0.1', () => {
+    const message = { type: 'ready', origin: 'http://127.0.0.1:' + server.address().port };
+    if (process.send) process.send(message);
+    else console.log(JSON.stringify(message));
+  });
+  process.on('message', message => {
+    if (message?.type === 'metrics') process.send({ type: 'metrics',
+      summaryRequests: requests.filter(route => route === '/api/v2/summary-batch').length,
+      seriesRequests: requests.filter(route => route === '/api/v2/series').length });
+  });
+  process.on('SIGTERM', () => server.close(() => process.exit(0)));
+} else (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const browser = await chromium.launch({ headless: true,
     ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}) });
@@ -268,6 +300,8 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => document.querySelector('.card [data-metric="0"] .stat-value')?.getAnimations().length > 0);
     const pulses = await page.evaluate(() => {
       const cards = [...document.querySelectorAll('.card')];
+      window.__completedTrialAnimations = cards.flatMap(card => card.getAnimations({ subtree: true }))
+        .filter(animation => animation.constructor === Animation);
       const extCard = document.querySelector('.badge-ext')?.closest('.card');
       return { current: cards[0].querySelector('[data-metric="0"] .stat-number').textContent,
         loss: extCard?.querySelector('[data-metric="4"] .stat-number').textContent,
@@ -276,6 +310,15 @@ const server = http.createServer((req, res) => {
     });
     assert.deepEqual([pulses.current, pulses.loss], ['11.0', '3.0']);
     assert.ok(pulses.lossPulse > 0 && pulses.entrances > 0 && pulses.entrances <= 6, JSON.stringify(pulses));
+    await page.waitForTimeout(350);
+    const completedMotion = await page.evaluate(() => {
+      const states = window.__completedTrialAnimations.map(animation => animation.playState);
+      delete window.__completedTrialAnimations;
+      return states;
+    });
+    assert.ok(completedMotion.length > 0 && completedMotion.every(state =>
+      state === (process.env.TEST_LEGACY_MOTION ? 'finished' : 'idle')),
+    'completed card and numeric motions must release their timeline and effect: ' + completedMotion);
     statsEpoch = 0; statsDelayMs = 0;
     statsDelayMs = 300;
     await page.locator('#goBtn').click();
@@ -430,6 +473,93 @@ const server = http.createServer((req, res) => {
     await allLossCard.locator('canvas').waitFor();
     assert.equal((await allLossCard.locator('canvas').screenshot()).equals(allLossImage), true,
       'pooled chart reassignment must preserve full-loss marks on return');
+    if (!process.env.TEST_LEGACY_MOTION) {
+      const dataPlot = allLossCard.locator('.trial-plot');
+      await dataPlot.focus();
+      const beforeData = requests.filter(route => route === '/api/v2/series').length;
+      const scrollBeforeData = await page.locator('#mainArea').evaluate(main => main.scrollTop);
+      await dataPlot.press('Enter');
+      await page.locator('#intervalTable tbody tr').first().waitFor();
+      assert.equal(await page.locator('#intervalTable tbody tr').count(), 10);
+      assert.deepEqual(await page.locator('#intervalTable tbody tr').first().locator('td').allTextContents(),
+        ['Missing', '100.00', '100.00', '1/1', '1', '0', '1']);
+      assert.match(await page.locator('#intervalTitle').textContent(), /VPS 0.*External.*v6.*Ext/);
+      assert.equal(requests.filter(route => route === '/api/v2/series').length, beforeData,
+        'interval data should reuse the frozen visible series');
+      const tableAx = await page.locator('#intervalDialog').ariaSnapshot();
+      assert.ok(tableAx.includes('Mean median RTT (ms)') && tableAx.includes('Missing latency') &&
+        tableAx.includes('100.00'), tableAx);
+      if (process.env.RUN_AXE) {
+        const violations = await page.evaluate(async () => (await axe.run(document, {
+          runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] }
+        })).violations.map(item => ({ id: item.id, nodes: item.nodes.length })));
+        assert.deepEqual(violations, []);
+      }
+      await page.keyboard.press('Escape');
+      await page.locator('#intervalDialog').waitFor({ state: 'hidden' });
+      assert.equal(await page.locator('#intervalTable table').count(), 0, 'closed data must release table DOM');
+      assert.equal(await dataPlot.evaluate(plot => document.activeElement === plot), true);
+      assert.equal(await page.locator('#mainArea').evaluate(main => main.scrollTop), scrollBeforeData,
+        'closing interval data must restore focus without moving the page');
+      await dataPlot.press(' ');
+      await page.locator('#intervalTable tbody tr').first().waitFor();
+      await page.locator('#closeIntervalData').click();
+      await page.locator('#intervalDialog').waitFor({ state: 'hidden' });
+      denseSeries = true;
+      await page.locator('#mainArea').evaluate(main => { main.scrollTop = 0; });
+      await page.locator('#goBtn').click();
+      await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 8 routes'));
+      const densePlot = page.locator('.card').first().locator('.trial-plot');
+      await densePlot.focus(); await densePlot.press('Enter');
+      await page.waitForFunction(() => document.querySelectorAll('#intervalTable tbody tr').length === 120);
+      assert.match(await page.locator('#intervalTable tbody tr').first().locator('th').textContent(),
+        /^\d\d:\d\d:\d\d–\d\d:\d\d:\d\d$/);
+      assert.match(await page.locator('#intervalTable time').first().getAttribute('datetime'), /Z$/);
+      assert.ok(await page.evaluate(() => ChartMatrixTrial.instanceCount + ChartMatrixTrial.pooledCount <= 4 &&
+        ChartMatrixTrial.pendingCount <= 4));
+      await page.keyboard.press('Escape');
+      await page.locator('#intervalDialog').waitFor({ state: 'hidden' });
+      assert.equal(await page.locator('#intervalTable tr').count(), 0);
+        denseSeries = false;
+        seriesDelayMs = 750;
+        await page.locator('#goBtn').click();
+        await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 8 routes'));
+        const loadingPlot = page.locator('.card').first().locator('.trial-plot');
+        await loadingPlot.focus(); await loadingPlot.press('Enter');
+        assert.equal(await page.locator('#intervalStatus').textContent(), 'Loading interval data…');
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => ChartMatrixTrial.pendingCount === 0 &&
+          document.querySelector('.card .trial-plot canvas'));
+        assert.equal(await page.locator('#intervalTable tr').count(), 0,
+          'a late series response must not repopulate a closed modal');
+        seriesDelayMs = 0;
+        await loadingPlot.press('Enter');
+        await page.locator('#intervalTable tbody tr').first().waitFor();
+        await page.evaluate(() => {
+          Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+          document.dispatchEvent(new Event('visibilitychange'));
+          delete document.hidden; document.dispatchEvent(new Event('visibilitychange'));
+        });
+        await page.locator('#intervalDialog').waitFor({ state: 'hidden' });
+        assert.equal(await page.locator('#intervalTable tr').count(), 0,
+          'a hidden page must release its interval table');
+        await page.waitForFunction(() => ChartMatrixTrial.instanceCount > 0);
+        failSeries = true;
+        await page.locator('#goBtn').click();
+        await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 8 routes'));
+        const failedPlot = page.locator('.card').first().locator('.trial-plot');
+        await failedPlot.focus(); await failedPlot.press('Enter');
+        await page.waitForFunction(() => document.getElementById('intervalStatus').textContent.includes('HTTP 500'));
+        assert.equal(await page.locator('#intervalTable tr').count(), 0);
+        assert.equal(requests.filter(route => route === '/api/graph.png').length, 0,
+          'failed interval data must not create automatic PNG fallback requests');
+        await page.keyboard.press('Escape'); failSeries = false;
+        await page.locator('#goBtn').click();
+        await page.waitForFunction(() => ChartMatrixTrial.pendingCount === 0 &&
+          document.getElementById('trialStatus').textContent.startsWith('Ready: 8 routes') &&
+          document.querySelector('.card .trial-plot canvas'));
+        assert.equal(await page.locator('.trial-plot.problem').count(), 0);
+      }
     const graphic = page.locator('.trial-plot .uplot').first();
     await graphic.hover();
     assert.equal(await page.locator('.u-cursor-x,.u-cursor-y').count(), 0);
@@ -620,13 +750,33 @@ const server = http.createServer((req, res) => {
     if (soakSeconds > 0) {
       const soakPattern = process.env.SOAK_PATTERN || 'scroll';
       const soakView = process.env.SOAK_VIEW || 'charts';
+      const soakRender = process.env.SOAK_RENDER || 'normal';
+      const soakMotion = process.env.SOAK_MOTION || 'normal';
       assert.ok(['scroll', 'static'].includes(soakPattern));
       assert.ok(['charts', 'results'].includes(soakView));
+      assert.ok(['normal', 'no-paint', 'hidden-canvas'].includes(soakRender));
+      assert.ok(['normal', 'reduce'].includes(soakMotion));
+      if (soakMotion === 'reduce') {
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await page.waitForTimeout(300);
+      }
       if (soakView === 'results') {
         await page.locator('[data-mode="stats"]').click();
         await page.locator('#goBtn').click();
         await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 480 routes'));
       }
+      if (soakRender === 'no-paint') await page.evaluate(() => {
+        // Diagnostic only: retain layout, path construction and requests but skip raster commands.
+        window.__skippedPaints = 0;
+        for (const name of ['clearRect', 'fillRect', 'strokeRect', 'fill', 'stroke', 'fillText', 'strokeText', 'drawImage'])
+          CanvasRenderingContext2D.prototype[name] = function () { window.__skippedPaints++; };
+      });
+      if (soakRender === 'hidden-canvas') await page.evaluate(() => {
+        // Diagnostic only: retain drawing and allocation but remove Canvas from visible composition.
+        const hide = () => document.querySelectorAll('canvas').forEach(canvas => { canvas.style.visibility = 'hidden'; });
+        hide();
+        new MutationObserver(hide).observe(document.getElementById('graphGrid'), { childList: true, subtree: true });
+      });
       const cdp = await page.context().newCDPSession(page);
       const browserCdp = process.platform === 'win32' ? await browser.newBrowserCDPSession() : null;
       await cdp.send('Performance.enable');
@@ -640,6 +790,8 @@ const server = http.createServer((req, res) => {
             cache: ChartMatrixTrial.cacheCount,
             cacheBytes: ChartMatrixTrial.cacheBytes, pending: ChartMatrixTrial.pendingCount,
             canvases: document.querySelectorAll('canvas').length,
+            skippedPaints: window.__skippedPaints || 0,
+            animations: document.getAnimations().length,
             pixels: [...document.querySelectorAll('canvas')].reduce((sum, canvas) => sum + canvas.width * canvas.height, 0) }))
         ]);
         const heap = perf.metrics.find(metric => metric.name === 'JSHeapUsedSize')?.value;
@@ -677,7 +829,8 @@ const server = http.createServer((req, res) => {
       const target = path.join(root, 'test-results/p4-matrix-browser-soak-' + soakSeconds + 's' +
         (label ? '-' + label : '') + '.json');
       fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.writeFileSync(target, JSON.stringify({ soakSeconds, soakPattern, soakView, releaseRoot,
+      fs.writeFileSync(target, JSON.stringify({ soakSeconds, soakPattern, soakView, soakRender, soakMotion, releaseRoot,
+        releaseManifestSha256, chartAsset, harnessSha256,
         cycles: cycle, submits, submitMs,
         summaryRequests: requests.filter(route => route === '/api/v2/summary-batch').length,
         seriesRequests: requests.filter(route => route === '/api/v2/series').length,
@@ -728,6 +881,17 @@ const server = http.createServer((req, res) => {
     assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth &&
       [...document.querySelectorAll('canvas')].reduce((sum, canvas) => sum + canvas.width * canvas.height, 0)
       <= ChartMatrixTrial.instanceCount * 1280 * 220 * 4));
+    if (!process.env.TEST_LEGACY_MOTION) {
+      await mobile.locator('.trial-plot').first().click();
+      await mobile.locator('#intervalTable tbody tr').first().waitFor();
+      assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth &&
+        document.getElementById('intervalDialog').getBoundingClientRect().width <= innerWidth &&
+        document.getElementById('intervalDialog').getBoundingClientRect().left >= 15 &&
+        document.getElementById('intervalTable').scrollWidth > document.getElementById('intervalTable').clientWidth));
+      await mobile.screenshot({ path: path.join(root, 'test-results/p4-matrix-data-mobile.png') });
+      await mobile.locator('#closeIntervalData').click();
+      await mobile.locator('#intervalDialog').waitFor({ state: 'hidden' });
+    }
     assert.deepEqual(mobileErrors, []);
     await mobile.close();
     const reduced = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });

@@ -109,6 +109,25 @@ The current visual contract is a dark, dense monitoring console:
 
 ## Service boundaries
 
+### Isolated P4 matrix (opt-in, updated 2026-09-30)
+
+The main page remains PNG. Its explicit Canvas link carries draft controls to
+`/chart-matrix-trial` without submitting. The trial freezes a complete v2
+summary selection using pages of at most 32 routes and the same RRD/cache
+budget; only one summary page is admitted at a time, with bounded client 503
+retries. Visible charts share at most four active/idle uPlot instances, two
+series requests and a 16-entry/2 MiB estimated series cache. Reassignment
+refreshes data, loss marks, axis and size; hidden pages release backing stores.
+Same-route refreshes update card DOM in place. No new runtime dependency or
+background refresh service is installed.
+
+One on-demand native dialog provides at most 120 interval rows from the same
+frozen series for keyboard/data access, without allocating tables for all
+routes. Completed WAAPI effects are released. Numerical bounds and memory,
+multiuser and rollout limitations are in the [P4 report](FRONTEND_P4_REPORT.md).
+Frontend-only deployments require identical runtime bytes and avoid API
+restart; the unchanged default install mode still handles API upgrades.
+
 ### P2 and isolated P3 trial (deployed 2026-09-23)
 
 P2 extracts DOM helpers and uses fingerprinted assets. P3 adds `series_contract.py`

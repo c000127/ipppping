@@ -610,3 +610,49 @@ SHA-256 均为
 主站试用入口往返无自动矩阵请求、试用页 Canvas 与主站两张 PNG；
 全部 12 个指纹资源哈希一致、无脚本错误。
 `ipppping` 与 Caddy 均 active、`NRestarts=0`，备份存在。
+
+## 2026-09-30 按需区间明细与无重启前端发布
+
+仅更新矩阵试用页：图面点击/Enter/Space 打开当前卡片的原生明细
+dialog，至多 120 行，展示区间均值中位 RTT、均值/峰值丢包及
+缺测/全丢包桶数；关闭释放表格，焦点恢复不跳页。同时显式释放
+已完成的 WAAPI 效果。主站无边框、五列指标内部左对齐、结构
+分隔线、默认 PNG、节点、探针和上传配置均未改变。
+
+构建及 staging `/root/ipppping-stage-motion-data-AV3fy5Sm`
+的 manifest SHA-256 均为
+`6813eb86bf17c0181295f1142e73620179cadc11ab9691409da93354aeba3b8b`。
+矩阵脚本 `chart-matrix-trial.658684c78370ac48.js`，独立样式
+`chart-matrix-trial.f64e0f8b8b6c3a8a.css`；矩阵 HTML SHA-256 为
+`63bc5f3a7283797eac9102222d509b17f3934367a091f9b65746ae48b06f70f4`。
+首页 HTML 仍为
+`8b4daf2eb5ad5e9de0fbfefff9ddba3d1939c3efe3df31a2cac309df44420364`，
+主页面脚本仍为 `app.b92c93ed00659b99.js`。
+
+新增的安装器 `--frontend-only` 先比对全部五个 runtime 文件与
+生产端逐字节一致，不写 runtime、不重启 API；仍检查指纹冲突、
+依赖、API/静态资源可达性，HTML 最后切换，失败恢复旧 HTML。
+原有完整 API/前端安装模式不变。新增三项安装/拒绝/故障回滚单测，
+共 84 项 Python 测试通过；默认不将不一致 runtime 悄然忽略。
+
+首次发布自动备份 `/root/ipppping-backup-20260930T003955604857Z`。
+随后用新版安装器与已验证的旧 staging
+`/root/ipppping-stage-pool-oF7BW3bC` 做真实试用版本回滚：公网
+HTML 确认恢复旧 `5c45b1f1d5a49654` 脚本，首页仍 PNG、采样仍
+新鲜，回滚前新页备份为 `/root/ipppping-backup-20260930T004106654866Z`。
+再安装本次新 staging 恢复新页，最终安装备份为
+`/root/ipppping-backup-20260930T004124096143Z`。所有备份为 0700，
+保留新旧指纹资源。本轮备份仅含前端页面/许可证，不冒称完整
+runtime 快照；此前完整备份继续保留。三次安装 API PID 均为
+157219，启动时间均为 `2026-09-29 09:00:48 UTC`，NRestarts=0。
+可用同一安装器、已验证旧 staging 和 `--frontend-only` 回退本轮，
+不要将当前 runtime 未核对的历史 staging 用于仅前端回退。
+
+发布前主页面、单链路、矩阵 480/499、节点选择不跳页、120 行
+表格/键盘/移动与 axe 回归通过。公网 Chrome 两次验证 2/4 路
+Canvas、多 Fixed、Ext/v4/v6、指示块及 reduced-motion：区间表
+90 行，额外序列请求 0，Escape 后焦点/滚动不变，无脚本错误。
+主站两张真实 PNG、旧五字段兼容和全部 12 个资源哈希通过；
+API/Caddy active。多用户与内存证据见 [P4 报告](FRONTEND_P4_REPORT.md)。
+这完成的是 **opt-in 试用版本回滚**，不是主页面默认 Canvas
+迁移后的 G5 回滚/24–48 小时观察验收；G4/G5 默认迁移仍不放行。

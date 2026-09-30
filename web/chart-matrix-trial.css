@@ -247,6 +247,31 @@
 .matrix-integrated-trial .trial-plot[aria-busy="true"]:empty::before { content: 'Loading visible series…'; }
 .matrix-integrated-trial .trial-plot.problem { color: var(--warning); padding: 60px 14px 0; }
 .matrix-integrated-trial .trial-plot .uplot { margin-inline: auto; }
+.matrix-integrated-trial .trial-plot[role="button"] { cursor: pointer; }
+.matrix-integrated-trial .trial-plot[role="button"]:focus-visible { outline: 2px solid var(--accent2); outline-offset: -2px; }
+.matrix-integrated-trial .trial-data-dialog {
+  width: min(1100px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 18px;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--text);
+  background: var(--bg-panel);
+  font: 12px/1.5 var(--font-ui);
+}
+.matrix-integrated-trial .trial-data-dialog::backdrop { background: rgba(0, 0, 0, .72); }
+.matrix-integrated-trial .trial-data-head { display: flex; gap: 16px; align-items: start; justify-content: space-between; }
+.matrix-integrated-trial .trial-data-head h2 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.matrix-integrated-trial .trial-data-head button { flex: none; padding: 5px 9px; background: var(--bg-hover); }
+.matrix-integrated-trial .trial-data-dialog p { margin: 12px 0; color: var(--text-sec); overflow-wrap: anywhere; }
+.matrix-integrated-trial .trial-data-scroll { overflow: auto; max-height: 60dvh; }
+.matrix-integrated-trial .trial-data-scroll table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.matrix-integrated-trial .trial-data-scroll caption { text-align: left; padding-bottom: 10px; color: var(--text-sec); }
+.matrix-integrated-trial .trial-data-scroll th,
+.matrix-integrated-trial .trial-data-scroll td { text-align: right; padding: 7px 10px; white-space: nowrap; border-bottom: 1px solid var(--trial-rule); }
+.matrix-integrated-trial .trial-data-scroll th { font-weight: 500; color: var(--text-sec); }
+.matrix-integrated-trial .trial-data-scroll th:first-child { text-align: left; }
 .matrix-integrated-trial .trial-reveal {
   position: absolute;
   background: var(--trial-plot);

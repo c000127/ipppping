@@ -48,6 +48,11 @@ Neither Canvas renderer loads on the main page. See the
 [frontend release record](docs/FRONTEND_PUBLIC_RELEASE.md) for deployed
 artifacts, verification and remaining rollout gates.
 
+On the matrix trial, click a plot or focus it and press Enter/Space to inspect
+up to 120 interval rows. The modal reuses the chart's frozen series, closes
+with Escape, and releases its table on close. This does not enable automatic
+refresh or change the main page's default renderer.
+
 The shared borderless layout and five-metric alignment are enforced by the
 [frontend visual invariants](docs/FRONTEND_DESIGN_RULES.md) and Chrome tests.
 

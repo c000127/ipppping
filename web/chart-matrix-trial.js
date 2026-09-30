@@ -11,6 +11,13 @@ const ChartMatrixTrial = (() => {
   const timeFormat = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Shanghai', hour12: false, hour: '2-digit', minute: '2-digit'
   });
+  const intervalTimeFormat = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Shanghai', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+  const intervalDateFormat = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Shanghai', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
   let nodes = [], pairs = [], items = [], matrix = null, controller = null, generation = 0, frame = 0, observer;
   let draftMode = 'stats', appliedMode = 'stats', pairMode = 'all', appliedPairMode = 'all';
   let draftDur = 10800, appliedDur = 10800, filter = 'all', unified = false, visibleMax = 1;
@@ -22,6 +29,7 @@ const ChartMatrixTrial = (() => {
   let seriesCache = new Map(), cacheBytes = 0;
   let chartGridColor = null;
   let motionFrame = 0, queryLoading = false, lastMetrics = new Map();
+  let detailsIndex = null, detailsTrigger = null;
   const motionAnimations = new Set(), revealedRoutes = new Set();
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -54,7 +62,14 @@ const ChartMatrixTrial = (() => {
   function trackMotion(element, keyframes, options) {
     const animation = element.animate(keyframes, options);
     motionAnimations.add(animation);
-    const done = () => motionAnimations.delete(animation);
+    const done = () => {
+      motionAnimations.delete(animation);
+      animation.removeEventListener('finish', done);
+      animation.removeEventListener('cancel', done);
+      // All terminal values match CSS. Release the finished timeline/effect too,
+      // especially the detached Canvas reveal cover with forwards fill.
+      if (animation.playState === 'finished') animation.cancel();
+    };
     animation.addEventListener('finish', done, { once: true });
     animation.addEventListener('cancel', done, { once: true });
     return animation;
@@ -164,6 +179,7 @@ const ChartMatrixTrial = (() => {
     cards[index]?.querySelector('.trial-plot')?.replaceChildren();
   }
   function clearWork(preserveCards = false, keepCharts = false) {
+    closeIntervalData();
     stopMotion(); revealedRoutes.clear();
     controller?.abort();
     for (const item of pending.values()) item.abort();
@@ -334,39 +350,93 @@ const ChartMatrixTrial = (() => {
     active.set(index, chart);
     revealPlot(chart, index);
   }
-  async function loadVisible(index) {
-    if (active.has(index) || pending.has(index) || matrix?.items[index].error || !matrix) return;
+  async function requestSeries(index) {
     const available = cached(index);
-    if (available) {
-      try { draw(index, available); }
-      catch (error) { cards[index].querySelector('.trial-plot').textContent = error.message; }
-      return;
-    }
+    if (available) return available;
+    const existing = pending.get(index);
+    if (existing && !existing.signal.aborted) return existing.result;
     const local = new AbortController(), token = generation;
     pending.set(index, local);
     const plot = cards[index].querySelector('.trial-plot');
     plot.setAttribute('aria-busy', 'true');
     const pair = matrix.pairs[index];
-    try {
+    local.result = (async () => { try {
       const data = await seriesPool.run(() => json('/api/v2/series?' + new URLSearchParams({
         source: pair.source, target: pair.target, type: pair.type, dur: String(matrix.dur),
         end: String(matrix.end), points: '120', encoding: 'columns'
       }), local.signal), local.signal);
-      if (token !== generation) return;
+      if (token !== generation) throw new DOMException('Query replaced', 'AbortError');
       validSeries(data, matrix.items[index], pair);
       remember(index, data);
-      if (wanted.has(index)) draw(index, data);
-    } catch (error) {
-      if (token === generation && wanted.has(index) && error.name !== 'AbortError') {
-        plot.textContent = error.message + '. No automatic PNG fallback.';
-        plot.classList.add('problem');
-      }
+      return data;
     } finally {
       // A cancelled generation must not clear the loading state of its replacement.
       if (pending.get(index) === local) {
         pending.delete(index);
         plot.removeAttribute('aria-busy');
       }
+    } })();
+    return local.result;
+  }
+  async function loadVisible(index) {
+    if (active.has(index) || pending.has(index) || matrix?.items[index].error || !matrix) return;
+    const token = generation, plot = cards[index].querySelector('.trial-plot');
+    try {
+      const data = await requestSeries(index);
+      if (token === generation && wanted.has(index)) draw(index, data);
+    } catch (error) {
+      if (token === generation && wanted.has(index) && error.name !== 'AbortError') {
+        plot.textContent = error.message + '. No automatic PNG fallback.';
+        plot.classList.add('problem');
+      }
+    }
+  }
+  function closeIntervalData() {
+    if ($('intervalDialog').open) $('intervalDialog').close();
+    detailsIndex = null;
+    $('intervalTable').replaceChildren();
+    $('intervalStatus').textContent = '';
+  }
+  async function showIntervalData(plot) {
+    const index = Number(plot.closest('.card').dataset.index), token = generation;
+    if (!matrix || queryLoading || items[index]?.error || $('intervalDialog').open) return;
+    detailsIndex = index; detailsTrigger = plot;
+    const pair = pairs[index];
+    $('intervalTitle').textContent = (pair.srcLabel || label(pair.source)) + ' → ' +
+      (pair.tgtLabel || label(pair.target)) + ' · ' + pair.type + (pair.ext ? ' · Ext' : '');
+    $('intervalStatus').textContent = 'Loading interval data…';
+    $('intervalTable').replaceChildren();
+    $('intervalDialog').showModal();
+    scheduleVisible();
+    try {
+      // Include the inspected route in the same four-route work budget.
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      await Promise.allSettled([...pending.values()].filter(job => job.signal.aborted).map(job => job.result));
+      if (detailsIndex !== index || token !== generation || !$('intervalDialog').open) return;
+      const data = await requestSeries(index);
+      if (detailsIndex !== index || token !== generation || !$('intervalDialog').open) return;
+      const c = data.columns;
+      const number = value => Number.isFinite(value) ? value.toFixed(2) : 'Missing';
+      const intervalTime = stamp => {
+        const date = new Date(stamp * 1000);
+        return '<time datetime="' + date.toISOString() + '" aria-label="' +
+          escapeHtml(intervalDateFormat.format(date) + ' UTC+08:00') + '">' + intervalTimeFormat.format(date) + '</time>';
+      };
+      const rows = c.end.map((end, i) => '<tr><th scope="row">' +
+        intervalTime(c.start[i]) + '–' + intervalTime(end) +
+        '</th>' + [number(c.median_mean_ms[i]), number(c.loss_mean_pct[i]), number(c.loss_max_pct[i]),
+          c.loss_event_count[i] + '/' + c.count[i], c.full_loss_count[i],
+          c.missing_measurement_count[i], c.missing_latency_count[i]]
+          .map(value => '<td>' + value + '</td>').join('') + '</tr>').join('');
+      $('intervalTable').innerHTML = '<table><caption>RTT and packet loss · ' + c.end.length + ' intervals</caption>' +
+        '<thead><tr>' + ['Interval', 'Mean median RTT (ms)', 'Mean loss (%)', 'Peak loss (%)',
+          'Loss / buckets', '100% loss buckets', 'Missing measurements', 'Missing latency']
+          .map(text => '<th scope="col">' + text + '</th>').join('') + '</tr></thead><tbody>' + rows + '</tbody></table>';
+      $('intervalStatus').textContent = timestamp(data.window.start) + ' – ' + timestamp(data.window.end) +
+        ' UTC+08:00' + (c.end.length ? '' : ' · No consolidated intervals in this window.');
+    } catch (error) {
+      if (detailsIndex === index && token === generation && $('intervalDialog').open)
+        $('intervalStatus').textContent = error.name === 'AbortError' ? 'Load cancelled. Close and retry.' : error.message;
     }
   }
   function scheduleVisible() {
@@ -381,7 +451,9 @@ const ChartMatrixTrial = (() => {
         const rect = cards[index].getBoundingClientRect();
         return { index, distance: Math.abs((rect.top + rect.bottom) / 2 - center) };
       }).sort((a, b) => a.distance - b.distance);
-      wanted = new Set(ranked.slice(0, MAX_ACTIVE).map(value => value.index));
+      const indexes = ranked.map(value => value.index);
+      if (detailsIndex !== null) indexes.unshift(detailsIndex);
+      wanted = new Set([...new Set(indexes)].slice(0, MAX_ACTIVE));
       for (const index of [...active.keys()]) if (!wanted.has(index)) dispose(index);
       for (const [index, item] of pending) if (!wanted.has(index)) item.abort();
       for (const index of wanted) loadVisible(index);
@@ -572,6 +644,7 @@ const ChartMatrixTrial = (() => {
       loss_pct: item.summary.loss_pct };
   }
   function renderCards({ enter = false, pulse = false } = {}) {
+    closeIntervalData();
     stopMotion();
     for (const index of [...active.keys()]) dispose(index, appliedMode === 'charts');
     if (appliedMode !== 'charts') destroyIdle();
@@ -604,7 +677,9 @@ const ChartMatrixTrial = (() => {
           '<span class="route-arrow" aria-hidden="true"><span class="route-arrow-inline">→</span><span class="route-arrow-down">↓</span></span>' +
           '<span class="route-node route-target">' + escapeHtml(pair.tgtLabel || label(pair.target)) + '</span>' +
           '</div><div class="card-right"><div class="stats"></div></div></div>' +
-          (appliedMode === 'charts' ? '<div class="card-img trial-plot" role="img" aria-label="Latency line, intervals with loss in every bucket, and peak-loss marks"></div>' : '') +
+          (appliedMode === 'charts' ? '<div class="card-img trial-plot" role="button" tabindex="0" title="Open interval data" aria-haspopup="dialog" aria-label="View RTT and loss interval data: ' +
+            escapeHtml((pair.srcLabel || label(pair.source)) + ' to ' + (pair.tgtLabel || label(pair.target)) +
+              ' ' + pair.type + (pair.ext ? ' external' : '')) + '"></div>' : '') +
           '</div>';
       }
       const stats = statsFor(index);
@@ -620,6 +695,7 @@ const ChartMatrixTrial = (() => {
       card.classList.toggle('is-error', !!error);
       if (appliedMode === 'charts') {
         const plot = card.querySelector('.trial-plot');
+        plot.setAttribute('aria-disabled', String(!!error));
         plot.removeAttribute('aria-busy');
         plot.classList.toggle('problem', !!error);
         if (error) plot.textContent = 'No chart: ' + error + '. Submit again to retry.';
@@ -656,6 +732,7 @@ const ChartMatrixTrial = (() => {
   }
   async function submit() {
     if ($('goBtn').disabled) return;
+    closeIntervalData();
     // Keep the previous matrix visible while the next query is in flight.
     controller?.abort();
     for (const item of pending.values()) item.abort();
@@ -746,6 +823,30 @@ const ChartMatrixTrial = (() => {
     }
   });
   $('goBtn').addEventListener('click', submit);
+  $('graphGrid').addEventListener('click', event => {
+    const plot = event.target.closest('.trial-plot');
+    if (plot) showIntervalData(plot);
+  });
+  $('graphGrid').addEventListener('keydown', event => {
+    if (!['Enter', ' '].includes(event.key) || !event.target.matches('.trial-plot')) return;
+    event.preventDefault(); showIntervalData(event.target);
+  });
+  $('closeIntervalData').addEventListener('click', closeIntervalData);
+  $('intervalDialog').addEventListener('keydown', event => {
+    // Let the native dialog handle Escape before the sidebar shortcut sees it.
+    if (event.key === 'Escape') event.stopPropagation();
+  });
+  $('intervalDialog').addEventListener('cancel', event => {
+    event.preventDefault(); closeIntervalData();
+  });
+  $('intervalDialog').addEventListener('close', () => {
+    if ($('intervalDialog').open) return;
+    detailsIndex = null;
+    $('intervalTable').replaceChildren(); $('intervalStatus').textContent = '';
+    if (detailsTrigger?.isConnected) detailsTrigger.focus({ preventScroll: true });
+    detailsTrigger = null;
+    if (!queryLoading) scheduleVisible();
+  });
   $('mainArea').addEventListener('scroll', scheduleVisible, { passive: true });
   const resize = new ResizeObserver(() => {
     if (queryLoading || !matrix || !active.size) return;
@@ -755,6 +856,7 @@ const ChartMatrixTrial = (() => {
   resize.observe($('mainArea'));
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
+      closeIntervalData();
       if (queryLoading) status('Query paused while hidden. Previous results remain visible; submit again.');
       controller?.abort(); generation++; queryLoading = false;
       for (const item of pending.values()) item.abort();
@@ -765,6 +867,7 @@ const ChartMatrixTrial = (() => {
     } else if (matrix) observe();
   });
   window.addEventListener('pagehide', () => {
+    closeIntervalData();
     stopMotion();
     queryLoading = false;
     controller?.abort(); generation++;

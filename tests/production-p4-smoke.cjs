@@ -111,6 +111,28 @@ const expectedHandoffAsset = '/static/assets/' + Object.keys(release.assets).fin
     await page.waitForFunction(() => document.getElementById('trialStatus').textContent.startsWith('Ready: 2 routes'));
     assert.equal(await page.evaluate(() => window.__firstLiveCard === document.querySelector('.card')), true,
       'production trial should reuse same-route cards on refresh');
+    await page.waitForFunction(() => ChartMatrixTrial.pendingCount === 0 &&
+      document.querySelector('.card .trial-plot canvas'));
+    const inspectedPlot = page.locator('.card').first().locator('.trial-plot');
+    const tableRequests = [];
+    const onTableRequest = request => {
+      if (new URL(request.url()).pathname === '/api/v2/series') tableRequests.push(request.url());
+    };
+    page.on('request', onTableRequest);
+    const scrollBeforeTable = await page.locator('#mainArea').evaluate(main => main.scrollTop);
+    await inspectedPlot.focus(); await inspectedPlot.press('Enter');
+    await page.locator('#intervalTable tbody tr').first().waitFor();
+    const intervalRows = await page.locator('#intervalTable tbody tr').count();
+    assert.ok(intervalRows > 0 && intervalRows <= 120);
+    assert.equal(tableRequests.length, 0, 'production interval dialog must reuse the frozen visible series');
+    assert.match(await page.locator('#intervalTitle').textContent(), /v4.*Ext/);
+    assert.match(await page.locator('#intervalTable time').first().getAttribute('datetime'), /Z$/);
+    await page.keyboard.press('Escape');
+    await page.locator('#intervalDialog').waitFor({ state: 'hidden' });
+    assert.equal(await page.locator('#intervalTable tr').count(), 0);
+    assert.equal(await inspectedPlot.evaluate(plot => document.activeElement === plot), true);
+    assert.equal(await page.locator('#mainArea').evaluate(main => main.scrollTop), scrollBeforeTable);
+    page.off('request', onTableRequest);
     assert.deepEqual(await page.locator('.card').first().locator('.badge').allTextContents(), ['Ext', 'v4']);
     assert.deepEqual(await page.locator('#chart-key span').allTextContents(),
       ['Mean median RTT', 'Loss in every bucket', 'Peak within interval']);
@@ -139,7 +161,8 @@ const expectedHandoffAsset = '/static/assets/' + Object.keys(release.assets).fin
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ site: origin, total: data.total, end: data.end,
       compressed: response.headers.get('content-encoding'), v4MaxMs: full.summary.max_median_ms,
-      multiFixedExternalRoutes: 4, chartReadyMs, motion,
+      multiFixedExternalRoutes: 4, chartReadyMs, motion, intervalRows,
+      intervalExtraRequests: tableRequests.length,
       canvasInstances: await page.evaluate(() => ChartMatrixTrial.instanceCount),
       mainAppAsset: expectedAppAsset, mainStylesAsset: expectedStylesAsset,
       mainHandoffAsset: expectedHandoffAsset, handoffRequests, errors }, null, 2));

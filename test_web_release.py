@@ -80,6 +80,40 @@ class WebReleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.run_install()
 
+    def test_frontend_only_requires_identical_runtime_before_mutation(self):
+        with self.assertRaisesRegex(ValueError, 'frontend-only runtime mismatch'):
+            installer.install(self.source, self.target, self.base / 'backup',
+                              lambda: self.fail('unexpected restart'), lambda *args: None,
+                              frontend_only=True)
+        self.assertFalse((self.base / 'backup').exists())
+        self.assertEqual((self.target / 'web/index.html').read_bytes(), b'old HTML')
+
+    def test_frontend_only_keeps_runtime_and_does_not_restart(self):
+        for name in installer.RUNTIME:
+            (self.source / name).write_bytes(b'old runtime')
+        stamps = {name: (self.target / name).stat().st_mtime_ns for name in installer.RUNTIME}
+        installer.install(self.source, self.target, self.base / 'backup',
+                          lambda: self.fail('unexpected restart'), lambda *args: None,
+                          frontend_only=True)
+        self.assertEqual((self.target / 'web/index.html').read_bytes(), (self.release / 'index.html').read_bytes())
+        for name in installer.RUNTIME:
+            self.assertEqual((self.target / name).stat().st_mtime_ns, stamps[name])
+            self.assertFalse((self.base / 'backup' / name).exists())
+
+    def test_frontend_only_failed_activation_rolls_back_without_restart(self):
+        for name in installer.RUNTIME:
+            (self.source / name).write_bytes(b'old runtime')
+        def probe(path, expected):
+            if path == '/chart-matrix-trial':
+                raise OSError('simulated trial activation failure')
+        with self.assertRaises(OSError):
+            installer.install(self.source, self.target, self.base / 'backup',
+                              lambda: self.fail('unexpected restart'), probe, frontend_only=True)
+        self.assertEqual((self.target / 'web/index.html').read_bytes(), b'old HTML')
+        self.assertEqual((self.target / 'server.py').read_bytes(), b'old runtime')
+        self.assertFalse((self.target / 'web/chart-matrix-trial.html').exists())
+        self.assertEqual((self.target / 'web/app.js').read_bytes(), b'legacy JS')
+
     def test_missing_dependency_rejected(self):
         (self.source / 'runtime.py').unlink()
         with self.assertRaises(ValueError):

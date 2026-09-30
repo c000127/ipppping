@@ -87,6 +87,15 @@
   </div>
 </div>
 <div class="toast-box" id="toastBox"></div>
+<dialog class="trial-data-dialog" id="intervalDialog" aria-labelledby="intervalTitle" aria-describedby="intervalExplanation">
+  <header class="trial-data-head">
+    <h2 id="intervalTitle">Interval data</h2>
+    <button type="button" id="closeIntervalData" autofocus aria-label="Close interval data">Close</button>
+  </header>
+  <p id="intervalExplanation">Each row aggregates measured buckets. A peak is somewhere within its interval; missing latency is not zero latency.</p>
+  <p id="intervalStatus" role="status"></p>
+  <div id="intervalTable" class="trial-data-scroll" tabindex="0" role="region" aria-label="Interval measurements"></div>
+</dialog>
 <script src="/static/request-state.js" defer></script>
 <script src="/static/ui-components.js" defer></script>
 <script src="/static/query-handoff.js" defer></script>

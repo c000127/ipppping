@@ -197,6 +197,34 @@ in the host's private Caddy configuration.
 
 ## Release checklist
 
+For an existing fingerprinted deployment, build with `python build_web.py`,
+stage the three HTML files, every asset referenced by `manifest.json`, the
+license, the five runtime modules listed in `deploy/install-api.py`, and the
+installer/build validator. Verify the manifest hash on both machines before
+activation. Do not install private inventories or credentials from a release
+archive. The target remains `/opt/ipppping`; the installer is not bootstrap.
+
+For a strictly frontend-only change, use:
+
+```bash
+python3 /absolute/staging/deploy/install-api.py /absolute/staging --frontend-only
+```
+
+This mode rejects the release before mutation unless all five staged runtime
+modules are byte-identical to the installed files. It writes no runtime file
+and does not restart the API, but still checks API/assets and activates HTML
+last, restoring old HTML if activation fails. Its 0700 backup contains only
+pages/license, **not** runtime or RRD data. Omit this flag for a reviewed
+API/runtime change; the original restart and full-runtime backup behavior
+then applies. Never use the flag to bypass a required API upgrade.
+
+After installation verify public asset hashes, one fresh probe, the main PNG
+path and the opt-in path. Record the returned backup and keep old immutable
+assets for existing tabs. A frontend rollback can reinstall a previously
+verified staging release with this flag only if its runtime still matches;
+otherwise use the reviewed paired API/frontend recovery procedure. See
+[actual releases and rollback evidence](FRONTEND_PUBLIC_RELEASE.md).
+
 - Confirm the working tree contains no private node file, RRD, log, key, or
   secret.
 - Run backend tests and syntax checks.

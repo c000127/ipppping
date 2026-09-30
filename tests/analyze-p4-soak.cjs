@@ -6,13 +6,22 @@ const fs = require('node:fs');
 const reportPath = process.argv[2];
 if (!reportPath) throw new Error('usage: node tests/analyze-p4-soak.cjs REPORT.json');
 const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+assert.notEqual(report.complete, false, 'the soak report is still in progress');
+assert.ok(report.driver !== 'direct-cdp' || report.networkInspector === 'off',
+  'direct CDP Network buffering is a diagnostic control, not the application memory gate');
 assert.ok(report.soakSeconds >= 3600 && Array.isArray(report.samples) && report.samples.length >= 50,
   'a full 60-minute report with minute samples is required');
 assert.ok((!report.soakPattern || report.soakPattern === 'scroll') &&
   (!report.soakView || report.soakView === 'charts'),
   'the G4 gate requires scrolling Charts, not an isolation control');
+assert.ok(!report.soakRender || report.soakRender === 'normal',
+  'the G4 gate requires actual visible Canvas rendering');
+assert.ok(!report.soakMotion || report.soakMotion === 'normal',
+  'the full G4 gate requires normal production motion');
 const rows = [...report.samples].sort((a, b) => a.elapsed - b.elapsed);
 const end = rows.at(-1).elapsed;
+assert.ok(Number.isFinite(end) && end >= 3600000,
+  'the observed sampling duration must cover at least 60 minutes');
 const tail30 = rows.filter(row => row.elapsed >= end - 30 * 60000);
 const first15 = tail30.filter(row => row.elapsed < end - 15 * 60000);
 const last15 = tail30.filter(row => row.elapsed >= end - 15 * 60000);
@@ -58,6 +67,10 @@ const checks = {
   errors: report.errors.length === 0
 };
 const result = { report: reportPath, minutes: +(end / 60000).toFixed(1),
+  driver: report.driver || 'playwright', networkInspector: report.networkInspector || 'framework-managed',
+  scrollPath: report.scrollPath || 'three-positions', seriesPoints: report.seriesPoints || null,
+  visitedRoutes: report.visitedRoutes || null, viewport: report.viewport || null,
+  releaseManifestSha256: report.releaseManifestSha256 || null, chartAsset: report.chartAsset || null,
   cycles: report.cycles, submits: report.submits,
   summaryRequests: report.summaryRequests, seriesRequests: report.seriesRequests,
   rendererSlopeMiBPerMin: +slope(tail30).toFixed(3),

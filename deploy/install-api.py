@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Install a validated fingerprinted release; retain all legacy client assets."""
+import argparse
 import datetime
 from pathlib import Path
 import shutil
@@ -22,13 +23,16 @@ def replace(source, destination):
     staged.replace(destination)
 
 
-def install(source, target, backup, restart, probe):
+def install(source, target, backup, restart, probe, *, frontend_only=False):
     source, target, backup = map(Path, (source, target, backup))
     release = source / 'build/web-release'
     manifest = validate(release)
     for name in RUNTIME:
         if not (source / name).is_file():
             raise ValueError('missing staged file: ' + name)
+        if frontend_only and (not (target / name).is_file() or
+                              (source / name).read_bytes() != (target / name).read_bytes()):
+            raise ValueError('frontend-only runtime mismatch: ' + name)
     for name in manifest['assets']:
         dest = target / 'web/assets' / name
         if dest.exists() and dest.read_bytes() != (release / 'assets' / name).read_bytes():
@@ -37,7 +41,8 @@ def install(source, target, backup, restart, probe):
     for name in ('JetBrainsMono-Regular.woff2', 'JetBrainsMono-Bold.woff2'):
         if not (target / 'web/fonts' / name).is_file():
             raise ValueError('missing installed font: ' + name)
-    files = (*RUNTIME, *(f'web/{page}' for page in manifest['pages']), 'web/vendor/UPLOT-LICENSE')
+    runtime_files = () if frontend_only else RUNTIME
+    files = (*runtime_files, *(f'web/{page}' for page in manifest['pages']), 'web/vendor/UPLOT-LICENSE')
     backup.mkdir(mode=0o700, parents=True, exist_ok=False)
     existed = set()
     for name in files:
@@ -49,9 +54,10 @@ def install(source, target, backup, restart, probe):
         replace(release / 'UPLOT-LICENSE', target / 'web/vendor/UPLOT-LICENSE')
         for name in manifest['assets']:
             replace(release / 'assets' / name, target / 'web/assets' / name)
-        for name in RUNTIME:
+        for name in runtime_files:
             replace(source / name, target / name)
-        restart()
+        if not frontend_only:
+            restart()
         probe('/api/nodes', None)
         for name in manifest['assets']:
             probe('/static/assets/' + name, (release / 'assets' / name).read_bytes())
@@ -68,7 +74,8 @@ def install(source, target, backup, restart, probe):
                 replace(backup / name, target / name)
             elif (target / name).exists():
                 (target / name).unlink()
-        restart()
+        if not frontend_only:
+            restart()
         raise
     # Legacy unhashed files and earlier fingerprinted releases are not removed.
     return backup
@@ -93,7 +100,14 @@ def probe_http(path, expected):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('source', type=Path)
+    parser.add_argument('--frontend-only', action='store_true',
+                        help='require identical runtime bytes; do not write runtime or restart API')
+    args = parser.parse_args()
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
-    backup = install(Path(sys.argv[1]).resolve(), Path('/opt/ipppping'),
-                     Path('/root/ipppping-backup-' + stamp), restart_service, probe_http)
-    print('API/frontend installed and healthy. Backup:', backup)
+    backup = install(args.source.resolve(), Path('/opt/ipppping'),
+                     Path('/root/ipppping-backup-' + stamp), restart_service, probe_http,
+                     frontend_only=args.frontend_only)
+    print(('Frontend installed without API restart.' if args.frontend_only else
+           'API/frontend installed and healthy.'), 'Backup:', backup)

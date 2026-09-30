@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-30 — Bounded matrix details and frontend-only releases
+
+- Added keyboard-accessible, on-demand interval data on the Canvas matrix
+  trial; at most 120 rows reuse the frozen visible series, with no extra
+  request for an already loaded plot. Closing releases DOM and restores focus
+  without moving the page.
+- Released completed animation effects while retaining short productive
+  motion and reduced-motion behavior. Preserved borderless cards, structural
+  separators, five-column whole-block centering/internal left alignment,
+  existing Current emphasis, and no per-result freshness/status copy.
+- Added guarded no-API-restart frontend installation and verified an actual
+  opt-in rollback/reinstall. All runtime bytes must match first.
+- Added bounded isolated/public multiuser checks and direct Chrome memory
+  controls without Network buffering; historical long-test failures remain
+  recorded. See the [P4 report](FRONTEND_P4_REPORT.md) for exact scope.
+- The default main renderer is still PNG; this is not G4/G5 default migration.
+
 ## 2026-09-23 — Fixed-node selection feedback
 
 - Added separate selection and cancellation animations for Fixed nodes, while

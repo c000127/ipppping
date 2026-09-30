@@ -1,17 +1,20 @@
-# Experimental series v2 contract
+# Series v2 contract
 
 Status: v2 series deployed 2026-09-23 for the separate opt-in `/chart-trial`;
 the bounded summary-batch endpoint and `/chart-matrix-trial` were deployed as
 another opt-in path on 2026-09-28. Legacy `/api/series`, stats and PNG remain
-compatible. The main page still uses PNG charts. See the
-[public release record](FRONTEND_PUBLIC_RELEASE.md).
+compatible. Since 2026-09-30 the main page defaults to the shared Canvas
+renderer using v2; `/?renderer=png` remains explicit compatibility. See the
+[public release record](FRONTEND_PUBLIC_RELEASE.md) and
+[closeout/evidence index](FRONTEND_UPGRADE_CLOSEOUT.md). Historical trial dates
+do not mean that the main page is still PNG or that capacity was measured as unlimited.
 
 `GET /api/v2/series?source=ID&target=ID&type=v4&dur=10800&points=720`
 
 The default `encoding=objects` returns `bins` as before. `encoding=columns`
 returns `encoding: "columns-v1"` and a `columns` object whose equal-length arrays
 use the same fields and order as `bins`; this is lossless, not downsampling.
-The trial requests columns; object clients remain compatible. `Accept-Encoding:
+The shared main/trial renderer requests columns; object clients remain compatible. `Accept-Encoding:
 gzip` is negotiated with quality values, `Vary: Accept-Encoding` is emitted, and
 gzip/identity bytes are cached within the existing shared bounded stats cache.
 An API test checks that actual HTTP gzip decompresses to the identity response.
@@ -19,11 +22,11 @@ An API test checks that actual HTTP gzip decompresses to the identity response.
 `GET /api/v2/summary` accepts the same parameters but omits `bins` and aggregation
 metadata. Both use the same snapshot/statistics implementation and existing
 8 MiB / 256-entry total stats cache, not independent unlimited caches. A batch
-summary and matrix integration were deferred until G3 passed. P4 now exposes
-a bounded summary-batch endpoint for its separate trial page, but the production
-main Charts page does not use it.
+summary and matrix integration were originally deferred until G3 passed. The
+bounded summary-batch endpoint now serves both main Canvas Charts and the
+separate matrix trial. Results and explicit PNG retain their existing interfaces.
 
-## P4 summary-batch (opt-in trial; not main Charts)
+## Summary-batch (shared main Canvas and matrix trial)
 
 `GET /api/v2/summary-batch?nodes=ID,ID&anchor=ID,ID&dur=10800&end=E&offset=0&limit=16`
 uses the same selection and multi-Fixed direction rules as `/api/pairs`. `anchor`
@@ -47,16 +50,19 @@ admission limit (default four) and executor used by legacy stats-batch. Gzip is 
 `Cache-Control: no-store` prevents a browser from silently reusing a partial
 matrix. A busy page returns 503 with `Retry-After: 2`. Raw RRD snapshots share
 the existing bounded stats cache; this endpoint creates no independent cache.
-The opt-in `/chart-matrix-trial` frontend requests pages sequentially. Its first
+The shared main Canvas and `/chart-matrix-trial` renderer requests pages sequentially. Its first
 page may omit `end` and accept the server's completed-minute value; every later
 summary page and visible series request explicitly reuses that value. It checks
 `selection_id`, `total`, page order, route identity and window before drawing.
 Only after all summaries arrive does it freeze the unified Y axis. At most four
 visible Canvas instances and two series requests run at once; the series cache
-is limited to eight entries / 2 MiB. This trial is public but not linked from
-the production main page. A 480-route hot-inode synthetic RRD benchmark and
-30-minute local Chrome lifecycle test are recorded in the [P4 report](FRONTEND_P4_REPORT.md);
-full production-scale load, main-page integration and final G4 acceptance remain open.
+is limited to 16 entries / estimated 2 MiB. Dependencies load only on explicit
+Canvas Charts submission, not navigation or Results. The production main page
+owns drafts, pairing and query generations; it is not a redirect to trial HTML.
+The [P4 report](FRONTEND_P4_REPORT.md) preserves historical benchmarks;
+the [main report](FRONTEND_MAIN_CANVAS_REPORT.md) records the actual main-default
+60-minute gate and finite production acceptance. Long-term full-matrix capacity
+was waived by the user, not measured as passing.
 
 ## Parameters and errors
 

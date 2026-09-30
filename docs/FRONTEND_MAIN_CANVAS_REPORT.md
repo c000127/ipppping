@@ -13,6 +13,12 @@ at 14:15:56.093 UTC (22:15 Singapore time). Five passing real samples through
 agree. G5's user-revised finite observation is accepted; follow-up is stopped.
 This is short-term low-concurrency evidence, not long-term/full-matrix capacity.
 
+Final scope decision 2026-09-30: the user explicitly waived long-term
+full-matrix capacity acceptance. Record it as waived, not tested passing.
+The approved release is closed out; see the [requirement/evidence index and
+build safeguards](FRONTEND_UPGRADE_CLOSEOUT.md). This does not rewrite failed
+reports, re-open observation or change production bytes.
+
 ## Implemented boundaries
 
 - `matrix-renderer.js` serves both main and independent trial: bounded uPlot

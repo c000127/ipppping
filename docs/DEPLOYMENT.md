@@ -197,7 +197,9 @@ in the host's private Caddy configuration.
 
 ## Release checklist
 
-For an existing fingerprinted deployment, build with `python build_web.py`,
+For an existing fingerprinted deployment, explicitly select the intended main
+renderer and a new candidate output directory (see below). The no-argument
+`python build_web.py` builds PNG, not the current production default. Then
 stage the three HTML files, every asset referenced by `manifest.json`, the
 license, the five runtime modules listed in `deploy/install-api.py`, and the
 installer/build validator. Verify the manifest hash on both machines before
@@ -229,10 +231,13 @@ otherwise use the reviewed paired API/frontend recovery procedure. See
 
 The source/default `python build_web.py` remains conservatively PNG-configured.
 Production uses the explicitly gated Canvas-default variant since 2026-09-30.
-Prepare that variant with:
+Prepare a new variant in a separate directory; never regenerate accepted frozen
+artifacts during verification:
 
 ```bash
-python -c "from build_web import build; build('web', 'build/web-release-main-default', default_renderer='canvas')"
+python build_web.py --default-renderer canvas --output build/web-release-candidate
+python build_web.py --verify-only --output build/web-release-candidate
+python build_web.py --default-renderer png --output build/web-release-png-candidate
 ```
 
 Package that variant at the staging path `build/web-release`; do not silently
@@ -241,6 +246,15 @@ main HTML's `data-chart-renderer`; the 13 immutable assets match PNG.
 Explicit `/?renderer=png` always wins; Results keeps its existing API.
 No automatic query or PNG fallback occurs. Keep verified PNG staging and all
 old assets for existing tabs.
+
+`--verify-only` validates the existing release and prints its renderer and
+manifest SHA-256 without writing. It cannot be combined with
+`--default-renderer`. It checks integrity, not authorization to activate a new
+candidate. The current accepted Canvas directory can be checked read-only with
+`python build_web.py --verify-only --output build/web-release-main-default`.
+See the [closeout index](FRONTEND_UPGRADE_CLOSEOUT.md) for the user's explicit
+long-term capacity waiver; do not replace missing capacity evidence with a pass.
+No further observation or deployment is required for this completed release.
 
 Main-default G4 must test the actual configured build, normal visible drawing
 and motion, 120-point full-matrix scrolling and the unchanged 60-minute gate.

@@ -122,6 +122,21 @@ async function main() {
     async function ready() { await waitFor(page, () => [...document.querySelectorAll('.stat-primary .stat-value')].some(el => el.textContent.trim())); }
     await reset();
     assert.equal(requests.length, 0, 'startup must not prefetch matrix');
+    if (!baseline) {
+      const ordering = await page.evaluate(() => {
+        const input = [{ id: 'b', label: 'Alpha 2' }, { id: 'a', label: 'alpha 2' },
+          { id: 'z', label: 'Beta' }, { id: 'x', label: 'Alpha 10' }];
+        return {
+          sorted: sortNodesByLabel(input).map(node => node.id),
+          original: input.map(node => node.id),
+          sidebar: [...document.querySelectorAll('.node[data-node-id]')].map(node => node.dataset.nodeId)
+        };
+      });
+      assert.deepEqual(ordering.sorted, ['a', 'b', 'x', 'z'], 'numeric, case-insensitive labels with stable ID tie-break');
+      assert.deepEqual(ordering.original, ['b', 'a', 'z', 'x'], 'sorting must not mutate inventory');
+      assert.deepEqual(ordering.sidebar, nodes.map(node => node.id), 'sidebar preserves inventory IDs and group-local label order');
+      report.cases.push({ case: 'inventory-label-order-and-id-preservation', ...ordering });
+    }
     await select(); await ready();
     assert.equal(await page.locator('.card').count(), 8);
     assert.equal(await page.locator('.card .badge-ext').count(), 4);

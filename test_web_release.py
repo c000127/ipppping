@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import re
 from pathlib import Path
 import tempfile
@@ -52,6 +53,48 @@ class WebReleaseTests(unittest.TestCase):
         self.assertIn(b'data-chart-renderer="canvas"', (candidate / 'index.html').read_bytes())
         with self.assertRaisesRegex(ValueError, 'invalid default renderer'):
             build_web.build(ROOT / 'web', self.base / 'bad', default_renderer='unknown')
+
+    def test_cli_explicit_canvas_matches_existing_build_bytes(self):
+        output = self.base / 'cli output'
+        with patch('sys.stdout', new_callable=io.StringIO) as stdout:
+            self.assertEqual(build_web.main(['--default-renderer', 'canvas', '--output', str(output)]), 0)
+        reference = self.base / 'reference'
+        build_web.build(ROOT / 'web', reference, default_renderer='canvas')
+        for path in reference.rglob('*'):
+            if path.is_file():
+                self.assertEqual(path.read_bytes(), (output / path.relative_to(reference)).read_bytes())
+        self.assertIn('Main renderer: canvas', stdout.getvalue())
+        self.assertIn(build_web.digest((output / 'manifest.json').read_bytes()), stdout.getvalue())
+
+    def test_cli_default_remains_png(self):
+        output = self.base / 'cli-default'
+        with patch('sys.stdout', new_callable=io.StringIO) as stdout:
+            build_web.main(['--output', str(output)])
+        self.assertEqual((output / 'manifest.json').read_bytes(), (self.release / 'manifest.json').read_bytes())
+        self.assertIn('Main renderer: png', stdout.getvalue())
+
+    def test_cli_verify_only_never_builds_or_writes(self):
+        before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.release.rglob('*') if p.is_file()}
+        with patch.object(build_web, 'build', side_effect=AssertionError('must not rebuild')), \
+                patch('sys.stdout', new_callable=io.StringIO):
+            self.assertEqual(build_web.main(['--verify-only', '--output', str(self.release)]), 0)
+        self.assertEqual(before, {p: (p.read_bytes(), p.stat().st_mtime_ns)
+                                  for p in self.release.rglob('*') if p.is_file()})
+        asset = next(iter(self.manifest['assets']))
+        (self.release / 'assets' / asset).write_bytes(b'corrupt')
+        with self.assertRaises(ValueError), patch('sys.stdout', new_callable=io.StringIO):
+            build_web.main(['--verify-only', '--output', str(self.release)])
+
+    def test_cli_invalid_or_conflicting_options_fail_before_build(self):
+        output = self.base / 'invalid-cli'
+        with patch.object(build_web, 'build', side_effect=AssertionError('must not build')), \
+                patch('sys.stderr', new_callable=io.StringIO):
+            for options in (['--default-renderer', 'unknown'],
+                            ['--default-renderer', 'canvas', '--verify-only']):
+                with self.assertRaises(SystemExit) as error:
+                    build_web.main(options + ['--output', str(output)])
+                self.assertEqual(error.exception.code, 2)
+        self.assertFalse(output.exists())
 
     def test_corruption_rejected_before_mutation(self):
         asset = next(iter(self.manifest['assets']))

@@ -1,4 +1,5 @@
 """Deterministic, stdlib-only frontend release builder (development machine)."""
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -82,7 +83,27 @@ def validate(output):
     return manifest
 
 
-if __name__ == '__main__':
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
     root = Path(__file__).resolve().parent
-    result = build(root / 'web', root / 'build/web-release')
-    print('Built and verified', len(result['assets']), 'assets in build/web-release')
+    parser.add_argument('--output', type=Path, default=root / 'build/web-release',
+                        help='release directory; use a separate candidate directory for new work')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--default-renderer', choices=('png', 'canvas'), default='png',
+                      help='main-page default, PNG unless explicitly selected; does not change Results')
+    mode.add_argument('--verify-only', action='store_true',
+                      help='verify existing release bytes without rebuilding or writing files')
+    args = parser.parse_args(argv)
+    result = validate(args.output) if args.verify_only else build(
+        root / 'web', args.output, default_renderer=args.default_renderer)
+    html = (args.output / 'index.html').read_bytes()
+    renderer = re.search(rb'data-chart-renderer="(png|canvas)"', html)
+    print('Verified' if args.verify_only else 'Built and verified', len(result['assets']),
+          'assets in', args.output)
+    print('Main renderer:', renderer[1].decode() if renderer else 'unspecified')
+    print('Manifest SHA-256:', digest((args.output / 'manifest.json').read_bytes()))
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

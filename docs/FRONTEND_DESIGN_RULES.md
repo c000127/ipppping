@@ -1,9 +1,11 @@
 # Frontend visual invariants
 
-Updated 2026-09-29. These are acceptance rules for both the production page
+Updated 2026-09-30. These are acceptance rules for both the production page
 and the opt-in matrix trial, not optional styling suggestions. When changing
 `web/styles.css`, `web/chart-matrix-trial.css`, the metric markup, or chart
 rendering, update the corresponding Chrome assertions before release.
+The [closeout index](FRONTEND_UPGRADE_CLOSEOUT.md) maps these rules to accepted
+Chrome evidence. A capacity waiver does not relax visual or accessibility rules.
 
 ## Borderless surfaces, structural separators
 

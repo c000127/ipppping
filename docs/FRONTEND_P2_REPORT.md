@@ -3,9 +3,10 @@
 日期：2026-09-22，复核于 2026-09-23。状态：**P2 主页面已于 2026-09-23 发布；当时工作树尚未提交或推送，后续仓库同步见公网发布记录**。
 下文的本地测试数字和当时的“未上线”表述保留为历史实验记录；实际发布范围、制品、生产验收与回滚位置见 [公网发布记录](FRONTEND_PUBLIC_RELEASE.md)。
 
-后续说明：P3 已扩展本地构建/安装器，当前工作树制品不再是纯 P2 包。
+后续说明：P3/P4 已扩展本地构建/安装器，共享 Canvas 已成为主页面默认。
 本报告的四资源/51 测试数字记录 P2 当时状态；最新制品与额外依赖见
-[P3 报告](FRONTEND_P3_REPORT.md)，不要按下文历史文件清单漏传新增模块。
+[收尾索引](FRONTEND_UPGRADE_CLOSEOUT.md)及[部署指南](DEPLOYMENT.md)，
+不要按下文历史文件清单漏传新增模块或把默认 PNG 构建当成生产 Canvas。
 
 ## 范围与实现
 
@@ -150,7 +151,11 @@ PowerShell 请使用 `$env:BROWSER_CHANNEL='chrome'`、`$env:TEST_BUILT_RELEASE=
 生成物在 `build/web-release/`，浏览器报告和截图在
 `test-results/p2-chromium/` 或 `test-results/p2-webkit/`，均不纳入 Git。
 
-## 发布与回滚约束（已执行；后续发布继续遵循）
+## 历史 P2 runtime 发布与回滚记录
+
+下面记录当时含 runtime 变更的安装。当前前端独立发布须用部署指南的
+五 runtime 字节一致检查及 `--frontend-only`，不沿用这里的 API 重启步骤。
+旧客户端资源保留、指纹与回滚要求继续有效。
 
 1. 在开发机完成上述构建及测试。将 `build_web.py`、`deploy/install-api.py`、
    `config.py`、`server.py`、`runtime.py`、`build/web-release/` 放入独立 staging 目录。

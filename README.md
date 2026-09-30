@@ -3,7 +3,8 @@
 Self-hosted SmokePing monitoring with a small Python API and a customized,
 responsive web frontend. The frontend presents Results and Charts views for
 IPv4, IPv6, and external checks, with current/average/min/max/loss statistics,
-RRD-backed PNG graphs, retry handling, and optional unified chart axes.
+RRD-backed Canvas charts with explicit PNG compatibility, retry handling,
+and optional unified chart axes.
 
 This repository is a sanitized maintenance reference for the deployed system.
 It intentionally contains no production IP addresses, SSH material, shared
@@ -48,6 +49,11 @@ Independent `/chart-trial` and `/chart-matrix-trial` entries remain available;
 the matrix trial and main page use the same bounded renderer. See the
 [frontend release record](docs/FRONTEND_PUBLIC_RELEASE.md) for deployed
 artifacts, verification and acceptance scope.
+
+The approved frontend upgrade is closed out; long-term full-matrix capacity
+acceptance was explicitly waived by the user, not measured as passing. The
+actual local one-hour gate and finite production observation passed. See the
+[closeout and requirement/evidence index](docs/FRONTEND_UPGRADE_CLOSEOUT.md).
 
 On either matrix Canvas entry, click a plot or press Enter/Space to inspect
 up to 120 interval rows. The modal reuses the chart's frozen series, closes
@@ -113,6 +119,17 @@ The tests that inspect real RRD contents require a SmokePing data directory and
 `rrdtool`; production data must never be copied into this repository.
 
 ## Deployment
+
+Build new candidates explicitly; do not overwrite frozen accepted artifacts:
+
+```bash
+python3 build_web.py --default-renderer canvas --output build/web-release-candidate
+python3 build_web.py --verify-only --output build/web-release-candidate
+```
+
+The no-argument build still defaults to PNG. `--verify-only` reads existing
+bytes without rebuilding; it prints the actual main renderer and manifest
+fingerprint. Packaging and production activation remain separate reviewed steps.
 
 See [sustainable lightweight operation](docs/LIGHTWEIGHT.md) for the upload-only
 legacy host, bounded API, selected-only frontend loading, and supervised slave

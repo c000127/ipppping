@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-30 — Approved frontend scope closed out; explicit build safeguards
+
+- User explicitly waived long-term full-matrix capacity acceptance. Record
+  acceptance by scope decision, not measured passing; actual G4 and finite G5
+  evidence, historical failures and paused follow-up remain unchanged.
+- Added the closeout/requirement-evidence index and aligned current-state
+  documentation with shared Canvas main, retained PNG and old-client recovery.
+- Added `build_web.py --default-renderer`, `--output` and read-only
+  `--verify-only`; no-argument behavior stays PNG. Verification prints actual
+  renderer and manifest hash. New candidates need separate directories and
+  reviewed staging; this is not production activation.
+- 89 Python and 28 Node tests, Chrome main/compatibility regressions pass.
+  CLI regression proves byte identity and no-write verification; existing
+  frozen Canvas/PNG fingerprints are unchanged. Added browser coverage for
+  numeric/case-insensitive node ordering, ID preservation and immutable input.
+- No production redeploy, API restart, node/sampling/RRD/cache change or
+  compatibility/backup deletion. Long-term capacity and optional diagnostics
+  remain explicitly unmeasured, not blocking this approved closeout.
+
 ## 2026-09-30 — User-revised one-hour production acceptance complete
 
 - Five passing real Chrome samples, 14:15:56.450–15:17:50.682 UTC, span

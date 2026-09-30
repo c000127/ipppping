@@ -4,6 +4,10 @@
 
 ## 1. 状态与结论
 
+本节及下文“尚未完成”记录 2026-09-22 的阶段边界。当前 Chrome G0/G2、
+共享主页面和有限生产验收已完成；长期容量由用户豁免，见
+[最新收尾索引](FRONTEND_UPGRADE_CLOSEOUT.md)，不以豁免改写历史测试。
+
 - P0：已建立支撑 P1 的代码/实机基线、需求边界、合成 RRD 黄金样本、可复现浏览器故障实验和截图。完整跨设备性能基线仍有下述缺口，不能把整个升级计划的 G0 全部打勾。
 - P1：数据状态、请求治理和兼容性修复已实现；44 项 Python 测试、4 项 Node 测试、14 组浏览器检查及实机合成 RRD 实验通过。Python 测试包含真实 HTTP Handler 的新增脚本可达性检查，而不只使用浏览器模拟服务器。
 - 隔离实验阶段无生产文件变更，只使用自动清理的 `ipppping-p1-lab-*` 临时目录。随后获准部署 P1，只替换 API/前端资源并重启 API；节点配置、上传协议、采样频率和保留策略未变。
@@ -160,7 +164,7 @@ node tests/frontend-browser.cjs
 
 本地生成的 `test-results/p0/`、`test-results/p1/` 包含报告 JSON 与截图，`test-results/rrd-lab.json` 为 RRD 实验；这些生成物已 gitignore。可持续维护的用例在 `test_measurement.py`、`tests/request-state.test.cjs`、`tests/frontend-browser.cjs` 中，基线前端由 Git `0b33aa6` 读取，未复制出第二套生产 UI。
 
-## 7. 发布准备与尚未完成事项
+## 7. 历史发布准备与当时未完成事项（2026-09-22）
 
 发布涉及 `server.py`、`web/request-state.js`、`web/app.js`、`web/styles.css`、`web/index.html`。安装助手已补齐新增资源，按依赖先、HTML 后顺序替换，原备份/回滚流程保留；执行记录见第 8 节。
 

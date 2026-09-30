@@ -1,5 +1,10 @@
 # Architecture
 
+Current frontend acceptance, deployed artifact mapping and the explicit user
+waiver of long-term full-matrix capacity are indexed in the
+[upgrade closeout](FRONTEND_UPGRADE_CLOSEOUT.md). Waiver is not measured capacity;
+the documented request/worker/cache limits remain unchanged.
+
 ## Components
 
 The deployed system has four logical layers:

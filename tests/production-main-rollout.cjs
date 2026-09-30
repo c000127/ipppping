@@ -20,7 +20,7 @@ const releases = Object.fromEntries(['png', 'canvas'].map(mode => {
   const bytes = fs.readFileSync(path.join(dir, 'manifest.json'));
   return [mode, { manifest: JSON.parse(bytes), hash: hash(bytes) }];
 }));
-const gatePath = path.join(root, 'test-results/p4-matrix-cdp-soak-3600s-off-main-default-busy-cleanup.json');
+const gatePath = path.join(root, 'test-results/p4-matrix-cdp-soak-3600s-off-main-default-awake-20260930t075649z.json');
 const gate = JSON.parse(fs.readFileSync(gatePath));
 assert.equal(gate.host, 'main-default');
 assert.equal(gate.releaseManifestSha256, releases.canvas.hash);
@@ -67,6 +67,11 @@ async function query(page, canvas) {
     if (pathname.startsWith('/api/')) paths.push(pathname);
   };
   page.on('request', read);
+  // A reused PNG tab already has complete images. Await a fresh response before
+  // testing its loaded image, rather than mistaking the prior render for refresh.
+  const freshPng = canvas ? null : page.waitForResponse(response =>
+    new URL(response.url()).pathname === '/api/graph.png' && response.ok(), { timeout: 30000 })
+    .then(response => ({ url: response.url() }), error => ({ error }));
   try {
     await page.locator('#goBtn').click();
     if (canvas) {
@@ -77,7 +82,10 @@ async function query(page, canvas) {
       assert.equal(await page.locator('.card .badge-v4').count(), 1);
       assert.equal(await page.locator('.card .badge-v6').count(), 1);
     } else {
-      await page.waitForFunction(() => [...document.querySelectorAll('.card-img img')].some(img => img.complete && img.naturalWidth > 0));
+      const loaded = await freshPng;
+      if (loaded.error) throw loaded.error;
+      await page.waitForFunction(url => [...document.querySelectorAll('.card-img img')]
+        .some(img => img.src === url && img.complete && img.naturalWidth > 0), loaded.url);
       assert.ok(paths.includes('/api/stats-batch.json'));
       assert.ok(paths.includes('/api/graph.png'));
       assert.ok(!paths.some(url => url.startsWith('/api/v2/')));

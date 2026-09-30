@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-30 — Canvas default rollout; one-hour observation paused
+
+- Passed the actual main-default 60-minute frozen-build gate unchanged:
+  renderer slope +0.162 MiB/min, median drift +2.84 MiB, four allocations,
+  zero script errors. Earlier interrupted reports remain unaccepted.
+- Authorized frontend-only default→PNG→default and old PNG/Canvas tabs passed.
+  Production defaults to Canvas; explicit PNG handoff, old assets and backups
+  remain. No runtime/node/RRD changes or API restart.
+- Corrected an old-tab PNG test race by requiring a fresh successful image
+  response and its decoded image, not already-complete prior images. The first
+  failed attempt automatically recovered PNG and its report is retained.
+- User shortened production observation from 12 hours to one hour: ≥5 passing
+  quarter-hour samples, not endpoint-only elapsed time. Its first freshness
+  assertion failed; the report is retained, follow-up stays paused and G5 is
+  not accepted. Frozen-window current can be null despite a newer raw update;
+  follow-up must resolve the health-test semantics, not weaken thresholds.
+
 ## 2026-09-30 — User-requested one-hour acceptance retry
 
 - Started a separate frozen-artifact main-default long test, retaining the

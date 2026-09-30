@@ -29,7 +29,7 @@ SmokePing master/slaves -> RRD files -> ipPping API -> Caddy/TLS -> browser
                                       +-- /api/pairs
                                       +-- /api/stats[-batch]
                                       +-- /api/series
-                                      +-- /api/v2/series (opt-in chart trial)
+                                      +-- /api/v2/summary-batch and /api/v2/series (Canvas)
                                       +-- /api/graph.png
 ```
 
@@ -38,20 +38,23 @@ presentation API: it validates node pairs, invokes `rrdtool`, caches short-lived
 results, and serves the files in `web/`. The API listens on loopback by default;
 put a TLS reverse proxy in front of it.
 
-The main page defaults to PNG charts. Its “Try Canvas Charts” link now enables
-the shared Canvas candidate at `/?renderer=canvas`, preserving draft controls
-without submitting. Only a Charts submission loads the Canvas dependencies;
-default PNG and Results navigation do not download them. “Use PNG Charts”
-returns the draft to the default page without automatically querying.
+The deployed main page defaults to shared Canvas charts as of 2026-09-30.
+Only an explicit Charts submission loads Canvas dependencies; opening the
+page or using Results does not. “Use PNG Charts” preserves draft controls
+at `/?renderer=png` without automatically querying. The source build CLI
+remains conservatively PNG-configured; production uses the separately
+fingerprinted Canvas-default HTML variant.
 Independent `/chart-trial` and `/chart-matrix-trial` entries remain available;
-the matrix trial and main candidate use the same bounded renderer. See the
+the matrix trial and main page use the same bounded renderer. See the
 [frontend release record](docs/FRONTEND_PUBLIC_RELEASE.md) for deployed
 artifacts, verification and remaining rollout gates.
 
 On either matrix Canvas entry, click a plot or press Enter/Space to inspect
 up to 120 interval rows. The modal reuses the chart's frozen series, closes
 with Escape, and releases its table on close. This does not enable automatic
-refresh or change the main page's default renderer.
+refresh. The main-default 60-minute local gate and production rollback/old-tab
+checks passed; the user-shortened one-hour production observation is not
+accepted because its first freshness assertion failed. Follow-up is paused.
 
 The shared borderless layout and five-metric alignment are enforced by the
 [frontend visual invariants](docs/FRONTEND_DESIGN_RULES.md) and Chrome tests.

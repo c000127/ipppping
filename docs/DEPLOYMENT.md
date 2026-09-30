@@ -227,8 +227,9 @@ otherwise use the reviewed paired API/frontend recovery procedure. See
 
 ### Main Canvas configuration and acceptance
 
-The source/default `python build_web.py` remains PNG-configured until the
-recorded release gate allows promotion. Prepare a Canvas-default variant with:
+The source/default `python build_web.py` remains conservatively PNG-configured.
+Production uses the explicitly gated Canvas-default variant since 2026-09-30.
+Prepare that variant with:
 
 ```bash
 python -c "from build_web import build; build('web', 'build/web-release-main-default', default_renderer='canvas')"
@@ -247,7 +248,7 @@ An independent trial or interrupted run cannot substitute. The explicitly
 opted-in `tests/production-main-rollout.cjs` verifies exact gate/stages,
 default→PNG→default and old tabs; see the [main report](FRONTEND_MAIN_CANVAS_REPORT.md).
 
-After final default restoration, take an immediate baseline and hourly
+After final default restoration, take an immediate baseline and 15-minute
 read-only samples with the actual ISO UTC timestamp/final build fingerprint:
 
 ```powershell
@@ -259,10 +260,17 @@ node tests/production-main-observe.cjs
 
 Use installed Chrome and the project's test runtime. The script reads
 production and writes only an ignored local report; it cannot deploy, restart,
-delete, or touch nodes. Its 12-hour gate needs ≥13 passing baseline/hourly
-samples covering at least 12 actual hours with distinct hourly bins,
-not two endpoints. Stop after the finite window and investigate failures;
-never reset timestamps to turn missing coverage into a pass.
+delete, or touch nodes. Per the user's latest revision, its one-hour gate needs
+≥5 passing baseline/15-minute samples spanning at least one actual hour in
+distinct quarter-hour bins, baseline within 15 minutes and no gap over 30
+minutes. `complete1h` is the verdict; two endpoints are insufficient. The
+runner permits fewer than eight existing samples and no execution after two
+hours. Stop and investigate failures; never reset timestamps or failed samples.
+The 2026-09-30 rollout passed but the first observation freshness assertion
+failed; follow-up is paused, not accepted. `current.measurement_updated_at`
+can legitimately be null when a newer raw update is outside a frozen v2
+window. Any revised health assertion needs explicit, tested semantics and a
+separately authorized observation window; do not fabricate a passing baseline.
 
 - Confirm the working tree contains no private node file, RRD, log, key, or
   secret.

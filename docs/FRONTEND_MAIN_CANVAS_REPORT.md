@@ -1,11 +1,13 @@
 # Shared Canvas main-page acceptance
 
-Updated 2026-09-30. The main page directly integrates the shared renderer at
-`/?renderer=canvas`, rather than redirecting to trial HTML. Production still
-defaults to PNG. The final default-build G4 run was interrupted and cannot
-be accepted; automated follow-up is paused. G5 default promotion/rollback
-and the now-required 12-hour observation have not started. A user-requested
-fresh one-hour retry started at 15:56 Singapore time; its outcome is pending.
+Updated 2026-09-30. Production main HTML now defaults to shared Canvas,
+rather than redirecting to trial HTML; `/?renderer=png` is explicit fallback.
+The fresh actual main-default 60-minute run passed the original G4 numerical
+gate. Authorized default→PNG→default, public fingerprints and old tabs passed
+at 13:42:40.783 UTC (21:42 Singapore time), without API restart.
+The user shortened production observation from 12 hours to one hour. Its
+first freshness assertion failed at 13:46:47.144 UTC; follow-up is paused,
+the failed sample is retained, and G5 observation is not accepted.
 
 ## Implemented boundaries
 
@@ -37,7 +39,7 @@ fresh one-hour retry started at 15:56 Singapore time; its outcome is pending.
 
 ## Regression evidence
 
-85 Python tests and 15 Node test entries passed. Installed Chrome
+85 Python tests and 16 Node test entries passed. Installed Chrome
 154.0.8037.59 passed existing main regression, shared trial 480/499 routes
 and axe checks. `tests/main-canvas-browser.cjs` passed both HTML configurations:
 lazy/default no-auto-submit, multi-Fixed Ext v4/v6, frozen axes, cached details/
@@ -58,7 +60,7 @@ combined-centering rule, without changing product styles to satisfy it.
 
 ## Final frozen release
 
-| Artifact | PNG candidate (deployed) | Canvas default (prepared, not activated) |
+| Artifact | PNG (verified rollback) | Canvas default (deployed) |
 | --- | --- | --- |
 | Manifest SHA-256 | `a8183f88638a80b8967474ac8541632a84ff153dc9ccaeafa96843ef84cad999` | `2d9d735cca2e84fe2e76113c6a2c513025ce925dccbbf89d3a9cb937bdce8885` |
 | Main HTML SHA-256 | `50ad2545f3f10d2bd30e5f34bd2823b6dcda692a283810ffcab5b3579e7ad6b3` | `80a5fe38b7c846dc849208ec93a1b345d37712709bf5ddd3f99b2a3907e994aa` |
@@ -86,11 +88,11 @@ An aborted run's owned `%TEMP%/ipppping-cdp-soak-ECVLwR` profile remains
 because cleanup was blocked; no workaround was attempted. No user browser
 profile or Android file was touched.
 
-## Remaining gates
+## Final main-default gate and observation rules
 
 Normal motion, actual Canvas, 120-point full 480-route 60-minute testing
-targets `/` from the Canvas-default build, not independent trial HTML:
-`test-results/p4-matrix-cdp-soak-3600s-off-main-default-busy-cleanup.json`.
+targeted `/` from the Canvas-default build, not independent trial HTML:
+`test-results/p4-matrix-cdp-soak-3600s-off-main-default-awake-20260930t075649z.json`.
 Manifest/main/renderer/harness hashes are recorded. Only a finished report
 passing unchanged `tests/analyze-p4-soak.cjs` may promote. No weaker threshold
 or disabled-render/motion control replaces production-like rendering.
@@ -104,10 +106,11 @@ PID/start/restarts; failure attempts verified PNG recovery.
 
 `tests/production-main-observe.cjs` takes low-rate read-only samples from the
 actual final default restoration. Timestamp/fingerprint cannot be silently
-reset or mixed. Per the user's 2026-09-30 revision, completion needs ≥13
-passing samples spanning 12 real hours, distinct hourly bins, baseline within
-15 minutes and no >2-hour gaps. The report uses `requiredHours=12` and
-`complete12h`; the former 24/48-hour requirements are superseded.
+reset or mixed. Per the user's latest 2026-09-30 revision, completion needs ≥5
+passing samples spanning one real hour, distinct 15-minute bins, baseline
+within 15 minutes and no >30-minute gaps. The report uses `requiredHours=1`,
+`sampleIntervalMinutes=15` and `complete1h`; former 12/24/48-hour requirements
+are superseded. Execution stops within two hours and at most eight samples.
 Two endpoints do not count; gaps/failures remain incomplete, never inferred
 successful solely from elapsed time.
 
@@ -152,9 +155,16 @@ interrupted G4 run or skipping default rollback. Completion stops follow-up.
 The user explicitly requested a new long test. Its separate report is
 `test-results/p4-matrix-cdp-soak-3600s-off-main-default-awake-20260930t075649z.json`; the previous partial report is retained unmodified.
 The unchanged main-default manifest, normal visible Canvas/motion,
-1800×900/DPR 1, 120 points and full-matrix sweep run for 3,600 seconds.
-The driver and original analyzer are unchanged. First-minute samples show
-four allocated charts and no script exceptions; this is not final acceptance.
+1800×900/DPR 1, 120 points and full-matrix sweep ran for 3,600 seconds.
+The driver and original analyzer are unchanged. All original checks passed:
+1,760 cycles, 58 submissions, 480/480 routes, renderer last-30-minute slope
++0.162 MiB/min (limit +0.2), last/prior-15-minute median drift +2.84 MiB
+(limit +8), heap 2.41→2.55 MiB, DOM 35,244–35,248, listeners 42–46,
+exactly four allocations, cache ≤16 / 191,488 estimated bytes, at most four
+canvases / 640,640 backing pixels, zero script exceptions. The positive
+renderer growth is within the original gate, not proof of zero growth or
+unlimited long-term capacity. Requests were local fixture traffic, not a
+production full-matrix stress test.
 
 `tests/start-matrix-soak.ps1` runs independently in a hidden local helper
 with redirected logs. It verifies the frozen manifest, refuses existing
@@ -170,12 +180,68 @@ One startup attempt could not resolve Get-FileHash in the helper environment,
 and another lacked the Node fixture's Playwright module path; both stopped
 before producing acceptance samples. The launcher now uses a .NET checksum
 and explicitly supplies the bundled modules. Their diagnostic logs are
-retained, not mistaken for valid tests. Wrapper parsing and the ten
-analyzer/12-hour-observation regression tests passed.
+retained, not mistaken for valid tests. Wrapper parsing and analyzer/observation
+regression tests passed; the current observation tests enforce one hour.
 
-Current helper/Node PIDs are 13080/16736 (owned local test only). The expected
-end is approximately 16:57 Singapore time; the wrapper runs the original
-analyzer after completion. No frontend/runtime artifact was changed or
-deployed. Production remains PNG and the recurring production follow-up
-remains paused; a successful test alone is not a completed rollout or
-12-hour observation.
+The owned helper/Node PIDs 13080/16736 exited at approximately 16:57 Singapore
+time, and the temporary system-awake request was released. No persistent power
+setting, frontend asset or runtime module changed during this long test.
+
+## Authorized default rollout (2026-09-30)
+
+`test-results/main-default-rollout.json` records a successful three-step
+frontend-only rehearsal with all public pages and 13 assets verified at each
+step, fresh queries from old PNG/Canvas tabs, explicit PNG handoff and no
+automatic query or duplicated legacy fetch on Canvas:
+
+| Step | Finished UTC | Backup |
+| --- | --- | --- |
+| Canvas default | 13:42:02.117 | `/root/ipppping-backup-20260930T134201160457Z` |
+| PNG rollback | 13:42:22.350 | `/root/ipppping-backup-20260930T134221431925Z` |
+| Canvas default restoration | 13:42:40.783 | `/root/ipppping-backup-20260930T134239857892Z` |
+
+`passed=true`, `oldTabsPassed=true`, errors empty. API PID 157219,
+NRestarts=0 and start time are unchanged. The staging installers rejected
+any runtime mismatch; only main HTML configuration differs between variants.
+Source/build CLI remains PNG-configured for conservative packaging, not a
+claim that production still defaults to PNG.
+
+The first attempt failed an old-PNG-tab test before the planned rollback
+stage. Its already-complete images let the test inspect before a new image
+response; recovery restored verified PNG automatically. The diagnostic report
+`test-results/main-default-rollout-attempt1-image-race.json` is retained.
+The test now requires a fresh successful PNG response and its decoded image;
+no product bytes, original resource gates or assertions were weakened.
+
+## Observation failure: retained evidence, follow-up paused
+
+The real release start remains `2026-09-30T13:42:40.783Z`. The first sample at
+13:46:47.144 UTC has `passed=false` and `complete1h=false`. API/Caddy were
+active, API memory 43,589,632 bytes, host available memory 1,213,366,272 bytes,
+swap used zero, PID/restarts unchanged. Failure occurred at the known v4
+`current.measurement_updated_at` freshness assertion. Its response body was
+not retained, so the exact failed timestamp/state cannot be reconstructed.
+
+Read-only follow-up returned fresh v4/v6 measurements with no service change.
+The contract and existing regression prove that a raw lastupdate newer than
+the frozen minute-aligned window legitimately has `state=outside_window` and
+null `measurement_updated_at`. This makes that field alone unsuitable for a
+real-time health gate; it is a plausible explanation, not proof of what the
+unrecorded failed response contained. Do not replace null with an invented
+timestamp, infer health from RRD write time alone, or remove the failed row.
+
+Production remains the successfully restored Canvas default; no automatic
+configuration change or second observation was performed. The recurring task
+is paused; the runner now refuses existing failed or completed observations
+before any production read. Future checks also retain probe state/window,
+requests and errors before their freshness assertion. Next work requires
+resolving the health assertion with explicitly
+measured evidence and separately authorizing a fresh finite observation,
+retaining this failed report and original release timestamp. The user's
+reported ≤2 users narrows the capacity claim, not the correctness gates.
+
+Low-rate post-rollout Chrome smoke scripts passed main/manual PNG, the shared
+matrix two/four external routes, interval reuse, multi-Fixed animation, mobile
+metrics, structural dividers and all 13 asset hashes. Page errors were zero;
+known CDN-injected scripts remained blocked by CSP. These checks do not erase
+the failed observation or constitute its missing one-hour coverage.

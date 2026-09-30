@@ -57,14 +57,15 @@ aggregate interval's center, **not an exact ping timestamp**. At 100% loss in
 every bucket, the filled region reaches the plot top; a whole-window outage
 fills the plot width. Unmeasured gaps remain unfilled. Missing RTT breaks its
 line. The legend must distinguish filled mean-loss intervals from peak marks.
-The production PNG renderer and the v2 data contract are unchanged until a
-separately approved migration.
+The PNG renderer and v2 data contract are unchanged by the approved
+2026-09-30 main-page default migration.
 
 ## Canvas motion on the opt-in matrix entries
 
-These rules also apply to the shared-renderer main candidate at
-`/?renderer=canvas`. Default PNG/Results retains its existing layout and
-does not load Canvas dependencies. Candidate controls retain decorative,
+These rules also apply to the shared-renderer production main page (Canvas
+default, with explicit `/?renderer=canvas` still supported). Manual PNG and
+Results retain their existing layout and do not load Canvas dependencies.
+Canvas controls retain decorative,
 non-focusable sliding indicators; switching back to Results hides them when
 the Canvas-only stylesheet scope is inactive.
 
@@ -125,14 +126,14 @@ line or freshness badges inside result cards.
 
 ## Explicit Canvas trial entry
 
-The production page remains PNG by default. Its “Try Canvas Charts” link may
-carry the **draft** node selection, Fixed nodes, duration, filter and unified
-axis to `/?renderer=canvas`; its “Use PNG Charts” link carries the
-same controls back. Neither navigation may submit a query automatically, and
+The production page defaults to Canvas. On the manual PNG page, “Try Canvas
+Charts” carries the **draft** node selection, Fixed nodes, duration, filter and
+unified axis to `/?renderer=canvas`; “Use PNG Charts” carries the same controls
+to `/?renderer=png`. Neither navigation may submit a query automatically, and
 the destination must validate all IDs and limits against the fresh node list
 before restoring controls. An invalid or stale link falls back to empty
-controls. This link is an opt-in navigation path, not a default renderer switch
-or an access-control boundary. The user must press Show Charts/Results to load.
+controls. These links are explicit renderer navigation, not an access-control
+boundary. The user must press Show Charts/Results to load.
 
 ## Required checks
 

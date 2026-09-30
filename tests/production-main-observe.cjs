@@ -22,7 +22,11 @@ const report = fs.existsSync(reportPath) ? JSON.parse(fs.readFileSync(reportPath
   { startedAt: new Date(start).toISOString(), manifestHash, samples: [] };
 assert.equal(report.startedAt, new Date(start).toISOString(), 'never reuse another observation window');
 assert.equal(report.manifestHash, manifestHash, 'never mix release fingerprints');
-assert.ok(report.samples.length < 128, 'finite observation window; do not monitor indefinitely');
+assert.ok(!report.samples.some(sample => !sample.passed),
+  'failed observation is terminal; retain evidence and obtain direction before a new window');
+assert.notEqual(report.complete1h, true, 'completed observation must not keep monitoring');
+assert.ok(report.samples.length < 8 && Date.now() - start <= 2 * 3600000,
+  'finite observation window; do not monitor indefinitely or reuse expired coverage');
 const row = { checkedAt: new Date().toISOString(), passed: false, hours: (Date.now() - start) / 3600000 };
 (async () => {
   const host = execFileSync('ssh', ['-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-p', '13922',
@@ -68,6 +72,12 @@ const row = { checkedAt: new Date().toISOString(), passed: false, hours: (Date.n
     const loaded = await Promise.all(summaries);
     const current = loaded.flatMap(data => data.items).find(item => item.protocol === 'v4');
     const measured = current?.current?.measurement_updated_at;
+    // Retain diagnostic evidence before asserting; null may mean outside_window,
+    // but it must not be silently replaced with a fabricated passing timestamp.
+    row.probe = { source: current?.source, target: current?.target,
+      protocol: current?.protocol, current: current?.current, window: current?.window,
+      generatedAt: current?.generated_at, error: current?.error };
+    row.requests = requests; row.errors = errors;
     assert.ok(Number.isFinite(measured) && Date.now() / 1000 - measured <= 300 && measured <= Date.now() / 1000 + 60,
       'known probe measurement must remain fresh; loss alone is not a release failure');
     row.measurementUpdatedAt = measured;
@@ -81,8 +91,10 @@ const row = { checkedAt: new Date().toISOString(), passed: false, hours: (Date.n
   .finally(() => {
     report.samples.push(row);
     report.requiredHours = observation.REQUIRED_HOURS;
-    report.complete12h = observation.complete(report.samples, report.startedAt);
+    report.sampleIntervalMinutes = observation.SAMPLE_INTERVAL_MINUTES;
+    report.complete1h = observation.complete(report.samples, report.startedAt);
     fs.mkdirSync(path.dirname(reportPath), { recursive: true });
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
-    console.log(JSON.stringify({ ...row, requiredHours: report.requiredHours, complete12h: report.complete12h }, null, 2));
+    console.log(JSON.stringify({ ...row, requiredHours: report.requiredHours,
+      sampleIntervalMinutes: report.sampleIntervalMinutes, complete1h: report.complete1h }, null, 2));
   });

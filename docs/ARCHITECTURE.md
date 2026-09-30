@@ -109,16 +109,18 @@ The current visual contract is a dark, dense monitoring console:
 
 ## Service boundaries
 
-### Shared P4 matrix and main-page candidate (opt-in, updated 2026-09-30)
+### Shared P4 matrix and main page (Canvas default, updated 2026-09-30)
 
-The main page defaults to PNG. Its explicit Canvas link carries drafts to
-`/?renderer=canvas` without submitting. The main app owns selection,
+Production main HTML defaults to Canvas; the explicit PNG link carries drafts
+to `/?renderer=png` without submitting. The build CLI still defaults to PNG,
+and the deployed Canvas variant changes only the main HTML setting.
+The main app owns selection,
 query generations and committed state; `matrix-renderer.js` owns only bounded
 Canvas/series/interval resources, shared with `/chart-matrix-trial`.
 Inert template references allow fingerprinted Canvas dependencies to load only
 after an explicit Charts submission. Canvas uses v2 summaries/series without
 also fetching legacy stats/images; Results retains its existing API.
-The candidate freezes a complete v2
+The renderer freezes a complete v2
 summary selection using pages of at most 32 routes and the same RRD/cache
 budget; only one summary page is admitted at a time, with bounded client 503
 retries. Visible charts share at most four active/idle uPlot instances, two

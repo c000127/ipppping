@@ -4,7 +4,8 @@ Updated 2026-09-30. The main page directly integrates the shared renderer at
 `/?renderer=canvas`, rather than redirecting to trial HTML. Production still
 defaults to PNG. The final default-build G4 run was interrupted and cannot
 be accepted; automated follow-up is paused. G5 default promotion/rollback
-and the now-required 12-hour observation have not started.
+and the now-required 12-hour observation have not started. A user-requested
+fresh one-hour retry started at 15:56 Singapore time; its outcome is pending.
 
 ## Implemented boundaries
 
@@ -145,3 +146,36 @@ paused follow-up now has a 12-hour name/acceptance prompt and at most 16 hourly
 runs (preflight/scheduling margin, not a 16-hour observation requirement).
 It remains paused: changing duration does not authorize restarting the
 interrupted G4 run or skipping default rollback. Completion stops follow-up.
+
+## User-requested retry (2026-09-30, 15:56 Singapore time)
+
+The user explicitly requested a new long test. Its separate report is
+`test-results/p4-matrix-cdp-soak-3600s-off-main-default-awake-20260930t075649z.json`; the previous partial report is retained unmodified.
+The unchanged main-default manifest, normal visible Canvas/motion,
+1800×900/DPR 1, 120 points and full-matrix sweep run for 3,600 seconds.
+The driver and original analyzer are unchanged. First-minute samples show
+four allocated charts and no script exceptions; this is not final acceptance.
+
+`tests/start-matrix-soak.ps1` runs independently in a hidden local helper
+with redirected logs. It verifies the frozen manifest, refuses existing
+report/log paths, supplies the bundled test dependency path, and uses a
+temporary ES_CONTINUOUS | ES_SYSTEM_REQUIRED request while waiting. No
+display/away-mode request or persistent power-plan setting is changed.
+The request is released on completion/error; a 65-minute watchdog can stop
+only its owned test tree. This follows
+[Microsoft's execution-state API](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setthreadexecutionstate);
+it cannot override deliberate sleep/lid-close actions.
+
+One startup attempt could not resolve Get-FileHash in the helper environment,
+and another lacked the Node fixture's Playwright module path; both stopped
+before producing acceptance samples. The launcher now uses a .NET checksum
+and explicitly supplies the bundled modules. Their diagnostic logs are
+retained, not mistaken for valid tests. Wrapper parsing and the ten
+analyzer/12-hour-observation regression tests passed.
+
+Current helper/Node PIDs are 13080/16736 (owned local test only). The expected
+end is approximately 16:57 Singapore time; the wrapper runs the original
+analyzer after completion. No frontend/runtime artifact was changed or
+deployed. Production remains PNG and the recurring production follow-up
+remains paused; a successful test alone is not a completed rollout or
+12-hour observation.

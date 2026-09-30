@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-30 — User-requested one-hour acceptance retry
+
+- Started a separate frozen-artifact main-default long test, retaining the
+  interrupted report. Added a detached, bounded local launcher with a
+  temporary system-awake request, automatic release and original gate
+  analysis; no persistent power settings or production changes.
+- Outcome pending; default rollout and 12-hour observation have not started.
+
 ## 2026-09-30 — Observation duration revision
 
 - Changed production acceptance from 24–48 hours to 12 hours at the user's

@@ -10,6 +10,9 @@
 - Added main-page failure/race/resource/accessibility tests, including retained
   plot cancellation cleanup, guarded default rollback and finite observation
   tools. See the [main acceptance record](FRONTEND_MAIN_CANVAS_REPORT.md).
+- The final local main-default soak was interrupted at ~23.5 minutes, with
+  overlapping Windows standby events. Its incomplete report cannot pass G4;
+  finite follow-up is paused and production remains PNG, without API restart.
 
 ## 2026-09-30 — Bounded matrix details and frontend-only releases
 

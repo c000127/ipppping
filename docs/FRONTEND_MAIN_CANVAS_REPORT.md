@@ -2,8 +2,9 @@
 
 Updated 2026-09-30. The main page directly integrates the shared renderer at
 `/?renderer=canvas`, rather than redirecting to trial HTML. Production still
-defaults to PNG while the final default-build G4 run is in progress. G5
-default promotion/rollback and 24–48-hour observation are not yet complete.
+defaults to PNG. The final default-build G4 run was interrupted and cannot
+be accepted; automated follow-up is paused. G5 default promotion/rollback
+and 24–48-hour observation have not started.
 
 ## Implemented boundaries
 
@@ -106,3 +107,33 @@ reset or mixed. Completion needs ≥25/49 passing samples spanning 24/48 real
 hours, distinct hourly bins, baseline within 15 minutes and no >2-hour gaps.
 Two endpoints do not count; gaps/failures remain incomplete, never inferred
 successful solely from elapsed time.
+
+## 2026-09-30 follow-up: interrupted local test, no promotion
+
+The thread-attached hourly follow-up `ipppping-48` was created at
+03:29:50 UTC with a finite 52-run limit. Its first check at 04:56 UTC found
+the frozen final report still `complete=false`, last written at 03:31:06 UTC.
+The last sample covers 1,411,918 ms (~23.5 minutes), not 60 minutes; 480/480
+routes were visited, four allocations, ~2.45 MiB JS heap, and no recorded
+script errors. These partial observations cannot pass the original gate.
+The owned execution session and Node test processes no longer existed.
+
+Windows System events record entry into modern standby at 11:33:29 and exit
+at 12:54:51 Singapore time (Kernel-Power 506/507). This overlaps the stalled
+test window and supports an environment interruption; it does not establish
+that application memory passed or failed. No power settings were changed,
+no test was automatically restarted, and no browser profile was deleted.
+
+The original analyzer rejected the incomplete report before any rollout.
+Per the approved safeguard, the follow-up was set to `PAUSED`, preserving
+its prompt/schedule. Public main HTML remains PNG, origin main HTML hash
+`50ad2545f3f10d2bd30e5f34bd2823b6dcda692a283810ffcab5b3579e7ad6b3`;
+API PID/start/NRestarts remain unchanged, API and Caddy active (~41 MiB API
+cgroup memory). No default rollout report or observation baseline exists.
+Keep the verified candidate and staged default; resume requires a fresh full
+60-minute run under the same gate with the local machine kept awake. Never
+append synthetic samples or treat the previous partial run as acceptance.
+
+Implementation/source commit: `a32fa4c641bcd625697fcbf5cb1d47b96d1e362e`.
+It contains the deployed candidate frontend bytes; subsequent documentation
+commits do not change their fingerprints.

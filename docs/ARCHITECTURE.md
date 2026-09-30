@@ -142,7 +142,9 @@ release timestamp and failed report, and reads one known v4 P1 raw-current
 witness outside the browser per 15-minute pass. This is a diagnostic side
 channel, not page auto-refresh, fallback, or an additional runtime service.
 Missing measurements/RRD writes cannot prove health; the original 300-second
-measurement age and 60-second future-skew limits remain. Completion is pending.
+measurement age and 60-second future-skew limits remain. Five passing real
+samples covered 61m54s on 2026-09-30, completing the revised one-hour acceptance.
+Finite follow-up is stopped; this does not prove arbitrary matrix capacity.
 
 ### P2 and isolated P3 trial (deployed 2026-09-23)
 

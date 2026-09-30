@@ -8,8 +8,10 @@ at 13:42:40.783 UTC (21:42 Singapore time), without API restart.
 The user shortened production observation from 12 hours to one hour. Its
 first freshness assertion failed at 13:46:47.144 UTC; that report is retained.
 The user explicitly authorized a corrected, separate observation starting
-at 14:15:56.093 UTC (22:15 Singapore time), with a passing baseline and active
-finite follow-up. G5 observation is still pending, not accepted.
+at 14:15:56.093 UTC (22:15 Singapore time). Five passing real samples through
+15:17:50.682 UTC span 61m54.232s; `complete1h=true` and independent adjudication
+agree. G5's user-revised finite observation is accepted; follow-up is stopped.
+This is short-term low-concurrency evidence, not long-term/full-matrix capacity.
 
 ## Implemented boundaries
 
@@ -283,9 +285,55 @@ asset hashes, Ext/v4/v6 labels, ≤4 chart instances, ≤3 summary attempts,
 Baseline at 14:15:56.450 UTC passed: measured state, two charts, one summary
 and two series, no page errors, ten loaded asset hashes verified. API memory
 42,172,416 bytes, host available 1,226,297,344 bytes, zero swap; API identity
-unchanged. `complete1h=false` remains pending. The same finite thread follow-up
-is active every 15 minutes, quiet unless completion/failure/action is needed.
-Observation stops by 16:15:56.093 UTC (at most eight samples); a later scheduled
-wakeup can only report expiry, not backfill samples. One hour must be covered
-by real passing samples; the independent trial's uptime and the failed prior
-window cannot be added. Keep the local machine awake or missed coverage fails.
+unchanged. Four real scheduled passes followed; the fifth total sample set
+`complete1h=true` at 15:17:50.682 UTC, before the two-hour hard deadline.
+The follow-up stops after completion, with no extra production reads or
+report resets. Neither independent-trial uptime nor the failed prior window
+was added to coverage.
+
+## Completed user-revised G5 observation (2026-09-30)
+
+Independent `observation-state.complete` confirms the recorded result, five
+passing samples in five distinct quarter-hour bins, baseline within one
+second of the authorized start, elapsed 3,714.232 seconds and maximum gap
+986.892 seconds (under the original 30-minute continuity limit):
+
+| Checked UTC | Passed | Frozen current state |
+| --- | --- | --- |
+| 14:15:56.450 | yes | measured |
+| 14:32:23.342 | yes | measured |
+| 14:47:18.507 | yes | measured |
+| 15:03:21.370 | yes | measured |
+| 15:17:50.682 | yes | outside_window, current values remain null |
+
+All five retained the same main HTML fingerprint and ten actually loaded
+asset hashes, two Ext cards with v4/v6 labels, two chart instances, one
+summary/two series requests, no browser legacy/PNG requests or page errors.
+Each pass made exactly one independent known-v4 P1 diagnostic read. API PID
+157219, NRestarts=0 and service start remained unchanged, API/Caddy active;
+API memory 42,172,416–42,176,512 bytes (~40.22 MiB), host available memory
+1,214,242,816–1,247,010,816 bytes, zero swap. No memory line was exceeded.
+
+The final sample genuinely exercised the corrected boundary: frozen end
+1790781420, raw input 1790781448, current fields null, live raw input measured
+at 1790781448. This supports the correction without inventing window-local
+values; it does not reconstruct the original failure's unretained response.
+
+Completed report SHA-256:
+`6c8d03af92ec293c7bd48c6d470683e95744fd9ef3a56165e5cb3d119d3bcf6a`.
+Original failed report checksum remains
+`ad7710bc4114218c8c508e3dd6a0d7645a2c435aa88c613f3c94e5c9544667a3`.
+Both reports remain local/ignored and unmodified after completion. Source
+health correction is commit `1004461af8ce1b1c012c6ead736030b8c568d31c`;
+production assets remain from `a32fa4c641bcd625697fcbf5cb1d47b96d1e362e`.
+The default build, explicit PNG staging, immutable old assets and rollout
+backups above are retained. No cleanup, deployment, restart or sampling/RRD/
+node/credential mutation was part of observation.
+
+The approved one-hour acceptance is complete and finite follow-up is stopped.
+This is five low-rate known-two-route Chrome snapshots under the user's
+reported ≤2-user scope, not continuous telemetry, a new multiuser stress run,
+or proof of long-term leak freedom/large public matrix capacity. Original G4
+positive renderer growth and near-cap summary latency remain documented
+trade-offs. Do not remove PNG compatibility, old assets or backups merely
+because this finite window passed.

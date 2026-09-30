@@ -47,7 +47,7 @@ fingerprinted Canvas-default HTML variant.
 Independent `/chart-trial` and `/chart-matrix-trial` entries remain available;
 the matrix trial and main page use the same bounded renderer. See the
 [frontend release record](docs/FRONTEND_PUBLIC_RELEASE.md) for deployed
-artifacts, verification and remaining rollout gates.
+artifacts, verification and acceptance scope.
 
 On either matrix Canvas entry, click a plot or press Enter/Space to inspect
 up to 120 interval rows. The modal reuses the chart's frozen series, closes
@@ -55,9 +55,10 @@ with Escape, and releases its table on close. This does not enable automatic
 refresh. The main-default 60-minute local gate and production rollback/old-tab
 checks passed. The first observation's freshness assertion failed and its
 report is retained. After explicit user authorization, a separate one-hour
-observation started at 14:15:56 UTC on 2026-09-30 with a passing baseline;
-its independent live-measurement check does not backfill frozen chart values.
-Follow-up is active; one-hour acceptance remains pending.
+observation passed with five real samples spanning 14:15:56–15:17:50 UTC on
+2026-09-30. Its independent live-measurement check does not backfill frozen
+chart values. The finite follow-up is stopped. This is short-term, known-route
+low-concurrency acceptance, not proof of long-term or full-matrix capacity.
 
 The shared borderless layout and five-metric alignment are enforced by the
 [frontend visual invariants](docs/FRONTEND_DESIGN_RULES.md) and Chrome tests.

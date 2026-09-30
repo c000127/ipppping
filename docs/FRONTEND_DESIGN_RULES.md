@@ -128,6 +128,8 @@ Acceptance diagnostics must not change those card rules. A frozen-window
 `outside_window` current stays unknown/null even if a separate live health
 witness is fresh. Do not backfill chart numbers/timestamps or add status copy
 because the production observation uses an independent raw-measurement read.
+The completed one-hour observation actually encountered this outside-window
+case in its last passing sample; no UI value was backfilled to make it pass.
 
 ## Explicit Canvas trial entry
 

@@ -250,7 +250,9 @@ default→PNG→default and old tabs; see the [main report](FRONTEND_MAIN_CANVAS
 
 The first post-restoration observation failed and is retained. The user
 explicitly authorized a new finite window with corrected health semantics.
-Continue only that existing window (do not replace its start with now):
+That window completed at 15:17:50.682 UTC with five passing samples. Do not
+rerun it, change its start, or redeploy. The following is the historical
+command used once per scheduled pass, not an instruction to keep monitoring:
 
 ```powershell
 $env:MAIN_OBSERVATION_PASS='1'
@@ -271,8 +273,9 @@ runner permits fewer than eight existing samples and no execution after two
 hours. Stop and investigate failures; never reset timestamps or failed samples.
 The original `test-results/main-canvas-observation.json` must stay byte-identical;
 the new report binds its checksum and retains `releasedAt=2026-09-30T13:42:40.783Z`
-separately from the authorized `startedAt`. The new baseline passed, follow-up
-is active and completion is pending. Window-local current may legitimately be
+separately from the authorized `startedAt`. The new report has `complete1h=true`,
+independently confirmed by observation-state; follow-up is stopped. The samples
+cover 61m54.232s with maximum gap 16m26.892s. Window-local current may legitimately be
 null for newer raw input; the corrected assertion validates that contract
 and one separate known v4 P1 raw-measurement read, keeping the original
 300-second age/60-second future limits. It never invents timestamps or

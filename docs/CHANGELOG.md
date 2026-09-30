@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-30 — User-revised one-hour production acceptance complete
+
+- Five passing real Chrome samples, 14:15:56.450–15:17:50.682 UTC, span
+  61m54.232s with maximum gap 16m26.892s. `complete1h=true` and independent
+  observation-state adjudication agree; finite follow-up is stopped.
+- Main/loaded asset fingerprints, Ext/v4/v6, bounded requests, known raw
+  measurement freshness and memory safety passed. API PID/restarts/start
+  unchanged, ~40.22 MiB API memory, zero swap, no page errors.
+- The last sample legitimately had outside-window current nulls, backed by
+  fresh independent measured evidence, without UI backfill or relaxed limits.
+  Original failed evidence and release time remain unchanged.
+- Production stays Canvas-default with explicit PNG compatibility and retained
+  rollback stages/backups/old assets. No deployment/restart/node/RRD changes.
+  This closes the approved finite low-concurrency observation, not long-term
+  capacity, continuous telemetry or an unlimited full-matrix load claim.
+
 ## 2026-09-30 — Authorized independent health witness and new observation
 
 - Kept the failed observation byte-identical and the actual release timestamp

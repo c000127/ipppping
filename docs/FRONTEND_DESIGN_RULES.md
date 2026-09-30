@@ -60,7 +60,13 @@ line. The legend must distinguish filled mean-loss intervals from peak marks.
 The production PNG renderer and the v2 data contract are unchanged until a
 separately approved migration.
 
-## Trial motion, only on `/chart-matrix-trial`
+## Canvas motion on the opt-in matrix entries
+
+These rules also apply to the shared-renderer main candidate at
+`/?renderer=canvas`. Default PNG/Results retains its existing layout and
+does not load Canvas dependencies. Candidate controls retain decorative,
+non-focusable sliding indicators; switching back to Results hides them when
+the Canvas-only stylesheet scope is inactive.
 
 Use productive, short motion: 150–180 ms for controls/cards, 220 ms for the
 one-time plot reveal, and 240 ms for a changed number. Entrance moves no more
@@ -121,7 +127,7 @@ line or freshness badges inside result cards.
 
 The production page remains PNG by default. Its “Try Canvas Charts” link may
 carry the **draft** node selection, Fixed nodes, duration, filter and unified
-axis to `/chart-matrix-trial`; the trial's “Production PNG” link carries the
+axis to `/?renderer=canvas`; its “Use PNG Charts” link carries the
 same controls back. Neither navigation may submit a query automatically, and
 the destination must validate all IDs and limits against the fresh node list
 before restoring controls. An invalid or stale link falls back to empty
@@ -131,7 +137,7 @@ or an access-control boundary. The user must press Show Charts/Results to load.
 ## Required checks
 
 Run `tests/query-handoff.test.cjs`, `tests/frontend-browser.cjs` and
-`tests/chart-matrix-browser.cjs` in Chrome
+`tests/chart-matrix-browser.cjs` and `tests/main-canvas-browser.cjs` in Chrome
 after changes to these rules. They assert borderless surfaces, edge-to-edge
 stacked separators, five-column per-item left alignment with whole-item
 centering, and the 2×2 divider at representative container widths. Review

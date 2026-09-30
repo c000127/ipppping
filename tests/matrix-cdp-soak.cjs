@@ -22,10 +22,15 @@ assert.ok(['three-positions', 'sweep'].includes(scrollPath));
 const seriesPoints = Number(process.env.MATRIX_SERIES_POINTS || 2);
 assert.ok([2, 120].includes(seriesPoints));
 const axisFormat = process.env.SOAK_FORMAT || 'normal';
+const host = process.env.SOAK_HOST || 'trial';
+assert.ok(['trial', 'main', 'main-default'].includes(host));
+const isMain = host !== 'trial';
+const probe = isMain ? 'MainCanvas' : 'ChartMatrixTrial';
 assert.ok(['normal', 'shared'].includes(axisFormat));
 const manifestBytes = fs.readFileSync(path.join(root, releaseRoot, 'manifest.json'));
 const manifest = JSON.parse(manifestBytes);
-const chartAsset = Object.keys(manifest.assets).find(name => name.startsWith('chart-matrix-trial.') && name.endsWith('.js'));
+const chartAsset = Object.keys(manifest.assets).find(name => name.startsWith(isMain ? 'app.' : 'chart-matrix-trial.') && name.endsWith('.js'));
+const rendererAsset = Object.keys(manifest.assets).find(name => name.startsWith('matrix-renderer.') && name.endsWith('.js'));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -143,7 +148,7 @@ async function privateMemory(protocol) {
       };
     })()` });
     const evaluate = async expression => {
-      const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+      const result = await send('Runtime.evaluate', { expression: expression.replaceAll('ChartMatrixTrial', probe), returnByValue: true, awaitPromise: true });
       if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
       return result.result.value;
     };
@@ -154,14 +159,15 @@ async function privateMemory(protocol) {
         await wait(50);
       }
     };
-    await send('Page.navigate', { url: origin + '/chart-matrix-trial' });
+    await send('Page.navigate', { url: origin + (host === 'main-default' ? '/' : isMain ? '/?renderer=canvas' : '/chart-matrix-trial') });
     await until("document.querySelectorAll('.node').length === 20");
     await evaluate("document.fonts.ready.then(() => true)");
     await evaluate(`(() => {
       for (let i = 0; i < 16; i++) document.querySelector('.node[data-node-id="v' + i + '"] .node-select').click();
       document.querySelector('[data-mode="charts"]').click(); document.getElementById('goBtn').click();
     })()`);
-    const ready = "document.getElementById('trialStatus').textContent.startsWith('Ready: 480 routes')";
+    const ready = isMain ? "MainCanvas.pairs.length === 480 && !MainCanvas.queryLoading"
+      : "document.getElementById('trialStatus').textContent.startsWith('Ready: 480 routes')";
     const settled = ready + " && ChartMatrixTrial.instanceCount > 0 && ChartMatrixTrial.pendingCount === 0 && " +
       "document.querySelectorAll('.trial-reveal').length === 0 && document.getAnimations().length === 0";
     await until(settled);
@@ -171,7 +177,7 @@ async function privateMemory(protocol) {
     const report = { driver: 'direct-cdp', browser: browser.product, networkInspector, viewport,
       soakSeconds, soakPattern: 'scroll', scrollPath, seriesPoints, axisFormat,
       soakView: 'charts', soakRender: 'normal', soakMotion: 'normal',
-      releaseRoot, releaseManifestSha256: hash(manifestBytes), chartAsset,
+      releaseRoot, releaseManifestSha256: hash(manifestBytes), chartAsset, rendererAsset, host,
       fixtureHarnessSha256: hash(fs.readFileSync(path.join(__dirname, 'chart-matrix-browser.cjs'))),
       harnessSha256: hash(fs.readFileSync(__filename)), complete: false,
       cycles: 0, submits: 0, submitMs: [], samples: [], errors, visitedRoutes: 0 };

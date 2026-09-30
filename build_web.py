@@ -6,7 +6,7 @@ import re
 
 ASSETS = ('styles.css', 'request-state.js', 'ui-components.js', 'query-handoff.js', 'app.js',
           'chart-trial.css', 'chart-trial.js', 'chart-matrix-trial.css',
-          'matrix-data.js', 'chart-matrix-trial.js', 'vendor/uplot.js', 'vendor/uplot.css')
+          'matrix-data.js', 'matrix-renderer.js', 'chart-matrix-trial.js', 'vendor/uplot.js', 'vendor/uplot.css')
 PAGES = ('index.html', 'chart-trial.html', 'chart-matrix-trial.html')
 VENDOR_HASHES = {
     'vendor/uplot.js': '19c8d4c6ad88929a79f4ae49d6f7161566dfd0ba3d15cc495e974f787eb78f1f',
@@ -19,13 +19,19 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def build(source, output):
+def build(source, output, *, default_renderer='png'):
     source, output = Path(source), Path(output)
     for name, checksum in VENDOR_HASHES.items():
         if digest((source / name).read_text(encoding='utf-8').encode('utf-8')) != checksum:
             raise ValueError('pinned vendor checksum mismatch: ' + name)
     (output / 'assets').mkdir(parents=True, exist_ok=True)
     pages = {name: (source / name).read_text(encoding='utf-8') for name in PAGES}
+    if default_renderer not in ('png', 'canvas'):
+        raise ValueError('invalid default renderer')
+    if pages['index.html'].count('data-chart-renderer="png"') != 1:
+        raise ValueError('missing explicit main renderer configuration')
+    pages['index.html'] = pages['index.html'].replace('data-chart-renderer="png"',
+                                                    f'data-chart-renderer="{default_renderer}"')
     manifest = {'assets': {}, 'pages': {}, 'licenses': {}}
     license_name = 'UPLOT-LICENSE'
     license_data = (source / 'vendor' / license_name).read_text(encoding='utf-8').encode('utf-8')

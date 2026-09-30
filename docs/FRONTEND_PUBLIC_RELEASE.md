@@ -1,5 +1,11 @@
 # P2 主页面与 P3 独立试用页：公网发布记录
 
+2026-09-30 最新候选：主页面 `/?renderer=canvas` 已接入与矩阵试用页
+共用的 renderer，而不是跳转试用 HTML。默认 PNG 保留，依赖按提交
+加载，运行模块/采样未改、API 未重启。当前指纹和回滚/验收记录见
+[主页面候选报告](FRONTEND_MAIN_CANVAS_REPORT.md)。尚未默认切换，
+24–48 小时默认生产观察也尚未开始。
+
 日期：2026-09-23。站点：<https://ipppping.hachimihaqile.top/>。
 
 ## 发布范围

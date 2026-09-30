@@ -109,10 +109,16 @@ The current visual contract is a dark, dense monitoring console:
 
 ## Service boundaries
 
-### Isolated P4 matrix (opt-in, updated 2026-09-30)
+### Shared P4 matrix and main-page candidate (opt-in, updated 2026-09-30)
 
-The main page remains PNG. Its explicit Canvas link carries draft controls to
-`/chart-matrix-trial` without submitting. The trial freezes a complete v2
+The main page defaults to PNG. Its explicit Canvas link carries drafts to
+`/?renderer=canvas` without submitting. The main app owns selection,
+query generations and committed state; `matrix-renderer.js` owns only bounded
+Canvas/series/interval resources, shared with `/chart-matrix-trial`.
+Inert template references allow fingerprinted Canvas dependencies to load only
+after an explicit Charts submission. Canvas uses v2 summaries/series without
+also fetching legacy stats/images; Results retains its existing API.
+The candidate freezes a complete v2
 summary selection using pages of at most 32 routes and the same RRD/cache
 budget; only one summary page is admitted at a time, with bounded client 503
 retries. Visible charts share at most four active/idle uPlot instances, two
@@ -134,8 +140,8 @@ P2 extracts DOM helpers and uses fingerprinted assets. P3 adds `series_contract.
 and `series_v2.py`, plus `/api/v2/series`, `/api/v2/summary` and a separate
 `/chart-trial` page. This does not replace the deployed matrix/PNG path.
 See [v2 contract](SERIES_V2.md) and [P3 gate report](FRONTEND_P3_REPORT.md).
-The trial uses the same total stats cache and RRDtool semaphore. Its uPlot assets
-load only on the trial page; no framework or Node service runs in production.
+The trial uses the same total stats cache and RRDtool semaphore. uPlot assets
+load only in explicit Canvas entries; no framework or Node service runs in production.
 See the [public release record](FRONTEND_PUBLIC_RELEASE.md) for deployed hashes,
 validation and remaining gates.
 

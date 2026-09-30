@@ -1,4 +1,5 @@
 import importlib.util
+import re
 from pathlib import Path
 import tempfile
 import threading
@@ -41,6 +42,17 @@ class WebReleaseTests(unittest.TestCase):
         self.assertEqual(self.manifest, build_web.build(ROOT / 'web', other))
         self.assertEqual((other / 'index.html').read_bytes(), (self.release / 'index.html').read_bytes())
 
+    def test_renderer_switch_changes_only_main_html(self):
+        candidate = self.base / 'canvas'
+        changed = build_web.build(ROOT / 'web', candidate, default_renderer='canvas')
+        self.assertEqual(self.manifest['assets'], changed['assets'])
+        for page in ('chart-trial.html', 'chart-matrix-trial.html'):
+            self.assertEqual(self.manifest['pages'][page], changed['pages'][page])
+        self.assertNotEqual(self.manifest['pages']['index.html'], changed['pages']['index.html'])
+        self.assertIn(b'data-chart-renderer="canvas"', (candidate / 'index.html').read_bytes())
+        with self.assertRaisesRegex(ValueError, 'invalid default renderer'):
+            build_web.build(ROOT / 'web', self.base / 'bad', default_renderer='unknown')
+
     def test_corruption_rejected_before_mutation(self):
         asset = next(iter(self.manifest['assets']))
         (self.release / 'assets' / asset).write_bytes(b'corrupt')
@@ -60,7 +72,11 @@ class WebReleaseTests(unittest.TestCase):
         self.assertEqual((self.target / 'web/app.js').read_bytes(), b'legacy JS')
         self.assertEqual((self.target / 'web/index.html').read_bytes(), (self.release / 'index.html').read_bytes())
         self.assertIn(b'MIT', (self.target / 'web/vendor/UPLOT-LICENSE').read_bytes())
-        self.assertNotIn(b'uplot', (self.target / 'web/index.html').read_bytes())
+        html = (self.target / 'web/index.html').read_bytes()
+        self.assertIn(b'<template id="canvasDependencies">', html)
+        active_html = re.sub(rb'<template\b[^>]*>.*?</template>', b'', html, flags=re.S)
+        self.assertNotIn(b'uplot', active_html)
+        self.assertNotIn(b'matrix-renderer', active_html)
 
     def test_failed_activation_rolls_back_runtime_and_html(self):
         def probe(path, expected):

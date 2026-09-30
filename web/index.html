@@ -7,7 +7,7 @@
 <title>ipPping — Latency Matrix</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
-<body>
+<body data-chart-renderer="png">
 <div id="app">
 
   <header class="topbar">
@@ -68,7 +68,7 @@
           <div class="sel-summary" id="selSummary">0 nodes · Select at least 2 nodes</div>
           <div class="sel-freshness" id="selFreshness">No update yet</div>
         </div>
-        <a class="canvas-trial-link" id="canvasTrialLink" href="/chart-matrix-trial" title="Open the opt-in Canvas trial; production Charts remain PNG">Try Canvas Charts ↗</a>
+        <a class="canvas-trial-link" id="canvasTrialLink" href="/?renderer=canvas" title="Enable the shared Canvas renderer on this page; default Charts remain PNG">Try Canvas Charts ↗</a>
       </div>
     </aside>
 
@@ -82,6 +82,15 @@
 
 </div>
 <div class="toast-box" id="toastBox"></div>
+
+<!-- Inert references: PNG/Results clients do not download or execute Canvas dependencies. -->
+<template id="canvasDependencies">
+  <link rel="stylesheet" href="/static/vendor/uplot.css">
+  <link rel="stylesheet" href="/static/chart-matrix-trial.css">
+  <script src="/static/matrix-data.js"></script>
+  <script src="/static/vendor/uplot.js"></script>
+  <script src="/static/matrix-renderer.js"></script>
+</template>
 
 <script src="/static/request-state.js" defer></script>
 <script src="/static/ui-components.js" defer></script>

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-30 — Shared main-page Canvas candidate
+
+- Integrated bounded Canvas into the actual main page, preserving drafts,
+  multiple Fixed nodes, Results, labels, filters and manual PNG handoff.
+  No duplicate legacy requests on Canvas.
+- Added HTML-only default configuration and explicit PNG override, with lazy
+  dependencies. Production remains PNG until final gates.
+- Added main-page failure/race/resource/accessibility tests, including retained
+  plot cancellation cleanup, guarded default rollback and finite observation
+  tools. See the [main acceptance record](FRONTEND_MAIN_CANVAS_REPORT.md).
+
 ## 2026-09-30 — Bounded matrix details and frontend-only releases
 
 - Added keyboard-accessible, on-demand interval data on the Canvas matrix

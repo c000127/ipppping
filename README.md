@@ -38,17 +38,17 @@ presentation API: it validates node pairs, invokes `rrdtool`, caches short-lived
 results, and serves the files in `web/`. The API listens on loopback by default;
 put a TLS reverse proxy in front of it.
 
-The deployed main page still uses PNG charts. An independent, opt-in
-`/chart-trial` page uses a bounded Canvas renderer and the v2 series API;
-`/chart-matrix-trial` integrates the production controls with a bounded
-Canvas matrix. The main sidebar's “Try Canvas Charts” link carries draft
-controls to that trial without loading any matrix until Show is pressed;
-returning to production likewise restores controls without querying.
-Neither Canvas renderer loads on the main page. See the
+The main page defaults to PNG charts. Its “Try Canvas Charts” link now enables
+the shared Canvas candidate at `/?renderer=canvas`, preserving draft controls
+without submitting. Only a Charts submission loads the Canvas dependencies;
+default PNG and Results navigation do not download them. “Use PNG Charts”
+returns the draft to the default page without automatically querying.
+Independent `/chart-trial` and `/chart-matrix-trial` entries remain available;
+the matrix trial and main candidate use the same bounded renderer. See the
 [frontend release record](docs/FRONTEND_PUBLIC_RELEASE.md) for deployed
 artifacts, verification and remaining rollout gates.
 
-On the matrix trial, click a plot or focus it and press Enter/Space to inspect
+On either matrix Canvas entry, click a plot or press Enter/Space to inspect
 up to 120 interval rows. The modal reuses the chart's frozen series, closes
 with Escape, and releases its table on close. This does not enable automatic
 refresh or change the main page's default renderer.

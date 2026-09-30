@@ -25,6 +25,9 @@ let lastRoutes = [];
 let partialMissing = false;
 let statsEpoch = 0, statsDelayMs = 0, summaryDelayMs = 0, seriesDelayMs = 0, failNextStats = false;
 let failSeries = false;
+let failNextSummary = false;
+let summaryBusyCount = 0;
+let v2Epoch = 0;
 const fixturePoints = Number(process.env.MATRIX_SERIES_POINTS || 2);
 assert.ok([2, 120].includes(fixturePoints));
 let denseSeries = fixturePoints === 120;
@@ -76,11 +79,11 @@ function summary(pair, end, dur, maximum) {
   const allLoss = pair.source === 'v0' && pair.target === 'ext' && pair.type === 'v6';
   return { source: pair.source, target: pair.target, protocol: pair.type,
     schema: 'ipppping.series.v2', snapshot_id: 'a'.repeat(24), window: { start: end - dur, end },
-    current: { current_ms: allLoss ? null : visualCase ? 8 : 10, measurement_updated_at: end - 60 },
+    current: { current_ms: allLoss ? null : (visualCase ? 8 : 10) + v2Epoch, measurement_updated_at: end - 60 },
     summary: { average_ms: allLoss ? null : visualCase ? 7.25 : 10,
       min_median_ms: allLoss ? null : visualCase ? 3.3 : 10,
       max_median_ms: allLoss ? null : maximum,
-      loss_pct: allLoss ? 100 : visualCase ? 25 : 0, measurement_coverage: 1 } };
+      loss_pct: allLoss ? 100 : visualCase ? 25 + v2Epoch : 0, measurement_coverage: 1 } };
 }
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://local'), pathname = url.pathname;
@@ -110,6 +113,17 @@ const server = http.createServer((req, res) => {
       return;
     }
     if (pathname === '/api/v2/summary-batch') {
+      if (summaryBusyCount > 0) {
+        summaryBusyCount--;
+        res.writeHead(503, { 'Retry-After': '0' }).end(JSON.stringify({ error: 'busy fixture' }));
+        return;
+      }
+      if (failNextSummary) {
+        failNextSummary = false;
+        const fail = () => res.writeHead(500).end(JSON.stringify({ error: 'simulated summary failure' }));
+        if (summaryDelayMs) setTimeout(fail, summaryDelayMs); else fail();
+        return;
+      }
       const offset = Number(url.searchParams.get('offset')), limit = Number(url.searchParams.get('limit'));
       const items = routes.slice(offset, offset + limit).map((pair, i) =>
         partialMissing && pair.source === 'v1' && pair.type === 'v6'
@@ -179,7 +193,8 @@ const server = http.createServer((req, res) => {
     }
     res.writeHead(404).end(); return;
   }
-  const relative = pathname === '/chart-matrix-trial' ? releaseRoot + '/chart-matrix-trial.html'
+  const relative = pathname === '/' ? releaseRoot + '/index.html'
+    : pathname === '/chart-matrix-trial' ? releaseRoot + '/chart-matrix-trial.html'
     : pathname.startsWith('/static/assets/') ? releaseRoot + '/assets/' + path.basename(pathname)
     : pathname.startsWith('/static/fonts/') ? 'web/fonts/' + path.basename(pathname) : null;
   if (!relative) { res.writeHead(404).end(); return; }
@@ -196,9 +211,21 @@ if (process.env.MATRIX_FIXTURE_ONLY === '1') {
     else console.log(JSON.stringify(message));
   });
   process.on('message', message => {
+    if (message?.type === 'configure') {
+      const settings = message.settings || {};
+      if ('summaryDelayMs' in settings) summaryDelayMs = settings.summaryDelayMs;
+      if ('seriesDelayMs' in settings) seriesDelayMs = settings.seriesDelayMs;
+      if ('partialMissing' in settings) partialMissing = settings.partialMissing;
+      if ('failNextSummary' in settings) failNextSummary = settings.failNextSummary;
+      if ('failSeries' in settings) failSeries = settings.failSeries;
+      if ('summaryBusyCount' in settings) summaryBusyCount = settings.summaryBusyCount;
+      if ('v2Epoch' in settings) v2Epoch = settings.v2Epoch;
+      process.send({ type: 'configured' });
+    }
     if (message?.type === 'metrics') process.send({ type: 'metrics',
       summaryRequests: requests.filter(route => route === '/api/v2/summary-batch').length,
-      seriesRequests: requests.filter(route => route === '/api/v2/series').length });
+      seriesRequests: requests.filter(route => route === '/api/v2/series').length,
+      requests: [...requests] });
   });
   process.on('SIGTERM', () => server.close(() => process.exit(0)));
 } else (async () => {

@@ -7,7 +7,9 @@ const { chromium } = require('playwright');
 
 const root = path.resolve(__dirname, '..');
 const origin = 'https://ipppping.hachimihaqile.top';
-const release = path.join(root, 'build/web-release');
+const releaseRoot = process.env.TEST_RELEASE_ROOT || 'build/web-release';
+assert.match(releaseRoot, /^build\/web-release(?:-[a-z0-9-]+)?$/);
+const release = path.join(root, releaseRoot);
 const output = path.join(root, 'test-results/production-p2p3');
 const manifest = JSON.parse(fs.readFileSync(path.join(release, 'manifest.json'), 'utf8'));
 const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
@@ -39,7 +41,7 @@ function verifyPublicHtml(body, pageName) {
         directive: event.violatedDirective, blockedURI: event.blockedURI, sourceFile: event.sourceFile }));
     });
 
-    const home = await page.goto(origin, { waitUntil: 'networkidle', timeout: 60000 });
+    const home = await page.goto(origin + '/?renderer=png', { waitUntil: 'networkidle', timeout: 60000 });
     assert.equal(home.status(), 200);
     const homeHtml = verifyPublicHtml(await home.body(), 'index.html');
     await page.locator('#n_akari_jp').waitFor();
@@ -80,10 +82,11 @@ function verifyPublicHtml(body, pageName) {
       footerHeight: document.querySelector('.sidebar-foot').getBoundingClientRect().height,
       statusRows: [...document.querySelector('#selInfo').children].map(el => el.getBoundingClientRect().height),
       freshness: document.querySelector('#selFreshness').textContent,
-      metricsCentered: [...document.querySelector('.card .stats').querySelectorAll('.stat-item')].every(item => {
-        const center = rect => (rect.left + rect.right) / 2;
-        return Math.abs(center(item.getBoundingClientRect()) - center(item.querySelector('.stat-label').getBoundingClientRect())) < 2
-          && Math.abs(center(item.getBoundingClientRect()) - center(item.querySelector('.stat-value').getBoundingClientRect())) < 2;
+      metricsAligned: [...document.querySelector('.card .stats').querySelectorAll('.stat-item')].every(item => {
+        const cell = item.getBoundingClientRect(), label = item.querySelector('.stat-label').getBoundingClientRect();
+        const value = item.querySelector('.stat-value').getBoundingClientRect();
+        const left = Math.min(label.left, value.left), right = Math.max(label.right, value.right);
+        return Math.abs(label.left - value.left) < 1 && Math.abs((left + right) / 2 - (cell.left + cell.right) / 2) < 2;
       }) }));
     assert.equal(results.cards, 2);
     assert.equal(results.ext, 2);
@@ -101,7 +104,7 @@ function verifyPublicHtml(body, pageName) {
     assert.equal(results.resultStatusText, false);
     assert.deepEqual(results.statusRows, [20, 20]);
     assert.match(results.freshness, /^Updated \d{2}:\d{2}$/);
-    assert.equal(results.metricsCentered, true);
+    assert.equal(results.metricsAligned, true, 'center the combined block, not its label/value independently');
     await page.screenshot({ path: path.join(output, 'results-desktop.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     const mobile = await page.evaluate(() => ({

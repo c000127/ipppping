@@ -1,5 +1,95 @@
 'use strict';
 
+// HTML controls promotion; an explicit PNG override always wins. Never auto-submit.
+const requestedRenderer = new URLSearchParams(location.search).get('renderer');
+const canvasOptIn = requestedRenderer === 'canvas' ||
+  (requestedRenderer !== 'png' && document.body.dataset.chartRenderer === 'canvas');
+let canvasRenderer = null, canvasDependencies = null, canvasSnapshot = null;
+let canvasItemsByKey = new Map(), canvasLoading = false;
+const loadedCanvasAssets = new Set();
+function canvasCharts() { return canvasOptIn && chartsEnabled(); }
+async function loadCanvasDependencies() {
+  if (canvasDependencies) return canvasDependencies;
+  canvasDependencies = (async () => {
+    const dependencies = document.getElementById('canvasDependencies').content;
+    for (const reference of dependencies.querySelectorAll('link, script')) {
+      const url = reference.src || reference.href;
+      if (loadedCanvasAssets.has(url)) continue;
+      const element = document.createElement(reference.tagName.toLowerCase());
+      const ready = new Promise((resolve, reject) => {
+        element.onload = resolve;
+        element.onerror = () => { element.remove(); reject(new Error('Canvas dependency failed to load')); };
+      });
+      if (reference.tagName === 'LINK') { element.rel = 'stylesheet'; element.href = reference.href; }
+      else { element.src = reference.src; element.async = false; }
+      document.head.append(element);
+      await ready;
+      loadedCanvasAssets.add(url);
+    }
+  })();
+  try { await canvasDependencies; } catch (error) { canvasDependencies = null; throw error; }
+}
+
+function canvasStatus(message) {
+  const status = document.getElementById('canvasStatus');
+  if (status) { status.hidden = !message; status.textContent = message; }
+}
+
+async function loadCanvasQuery(sel, anchors, expectedPairs, generation, signal) {
+  canvasLoading = true;
+  const dur = Number(draftDuration), pairing = draftPairMode;
+  ensureMainShell(); canvasRenderer?.pause();
+  canvasStatus('Building frozen summary… Previous results remain until the query completes.');
+  try {
+    await loadCanvasDependencies();
+    if (signal.aborted || generation !== renderGeneration) return;
+    if (!canvasRenderer) canvasRenderer = MatrixRenderer.create({ nodes: () => nodes, json: fetchJson, controls: true });
+    const loaded = await MatrixData.load(sel, anchors, dur, null, fetchJson, signal,
+      (done, total) => { if (generation === renderGeneration) canvasStatus(`Summaries ${done}/${total}; charts wait for the complete frozen range.`); });
+    if (signal.aborted || generation !== renderGeneration) return;
+    const expected = new Set(expectedPairs.map(MatrixData.identity));
+    if (loaded.pairs.length !== expected.size || loaded.pairs.some(pair => !expected.delete(MatrixData.identity(pair))) || expected.size)
+      throw new Error('Node selection and server routes disagree');
+    const metricPulse = new Map();
+    loaded.pairs.forEach((pair, index) => {
+      const before = canvasItemsByKey.get(pairIdentity(pair))?.item, item = loaded.items[index];
+      if (!before || before.error || item.error) return;
+      metricPulse.set(index, {
+        current: Number.isFinite(item.current?.current_ms) && item.current.current_ms !== before.current?.current_ms,
+        loss: Number.isFinite(item.summary.loss_pct) && item.summary.loss_pct > 0 && item.summary.loss_pct !== before.summary?.loss_pct
+      });
+    });
+    canvasSnapshot = loaded;
+    canvasItemsByKey = new Map(loaded.pairs.map((pair, index) => [pairIdentity(pair), { item: loaded.items[index], index }]));
+    selectedDuration = String(dur); appliedViewMode = 'charts'; appliedPairMode = pairing;
+    appliedAnchors = anchors.slice(); appliedSelection = sel.slice(); currentPairs = loaded.pairs;
+    batchLoadingGeneration = -1; canvasLoading = false;
+    document.body.classList.add('matrix-integrated-trial');
+    renderGrid({ preserveRequest: true, hydrate: false, animateLayout: false, metricPulse });
+    updSel();
+    const failed = loaded.items.filter(item => item.error).length;
+    canvasStatus(`Canvas: ${loaded.pairs.length} routes${failed ? ` · ${failed} unavailable` : ''}. Frozen window; open a chart for interval data.`);
+  } catch (error) {
+    if (generation !== renderGeneration) return;
+    canvasLoading = false;
+    canvasStatus(error.name === 'AbortError' ? 'Query cancelled. Submit again.' : `Query failed: ${error.message}. Previous results retained; no automatic PNG fallback.`);
+    if (canvasSnapshot && canvasCharts()) renderGrid({ preserveRequest: true, animate: false });
+    else canvasRenderer?.resume();
+  }
+}
+
+const MainCanvas = {
+  get instanceCount() { return canvasRenderer?.instanceCount || 0; },
+  get pooledCount() { return canvasRenderer?.pooledCount || 0; },
+  get chartAllocations() { return canvasRenderer?.chartAllocations || 0; },
+  get backingPixels() { return canvasRenderer?.backingPixels || 0; },
+  get cacheCount() { return canvasRenderer?.cacheCount || 0; },
+  get cacheBytes() { return canvasRenderer?.cacheBytes || 0; },
+  get pendingCount() { return canvasRenderer?.pendingCount || 0; },
+  get queryLoading() { return canvasLoading; }, get matrix() { return canvasSnapshot; },
+  get pairs() { return currentPairs; }, get mode() { return appliedViewMode; }
+};
+
 let nodes = [];
 const nodeLabelCollator = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
 function sortNodesByLabel(items) {
@@ -398,7 +488,8 @@ function updateSelectionFreshness() {
     if (activeFilter === 'v4' && pair.type !== 'v4') continue;
     if (activeFilter === 'v6' && pair.type !== 'v6') continue;
     if (activeFilter === 'ext' && !pair.ext) continue;
-    const stamp = statsCache[statsCacheKey(pair)]?.measurement_updated_at;
+    const stamp = canvasCharts() ? canvasItemsByKey.get(pairIdentity(pair))?.item.current?.measurement_updated_at
+      : statsCache[statsCacheKey(pair)]?.measurement_updated_at;
     if (Number.isFinite(stamp) && stamp > latest && stamp <= now + 60) latest = stamp;
   }
   const label = latest ? `Updated ${updateTimeFormat.format(new Date(latest * 1000))}` : 'No update yet';
@@ -425,9 +516,12 @@ function updSel() {
   }
   document.getElementById('goBtn').disabled = s.length < 2 || !!message;
   const handoff = !message && pairs > 0 ? QueryHandoff.encode({ nodes: s,
-    fixed: anchors, dur: Number(draftDuration), mode: 'charts',
+    fixed: anchors, dur: Number(draftDuration), mode: canvasOptIn ? draftViewMode : 'charts',
     filter: activeFilter, unified: unifiedYAxisEnabled }) : '';
-  document.getElementById('canvasTrialLink').href = '/chart-matrix-trial' + (handoff ? '?' + handoff : '');
+  const rendererLink = document.getElementById('canvasTrialLink');
+  rendererLink.href = '/' + (canvasOptIn ? '?renderer=png' : '?renderer=canvas') + (handoff ? '&' + handoff : '');
+  rendererLink.textContent = canvasOptIn ? 'Use PNG Charts ↗' : 'Try Canvas Charts ↗';
+  rendererLink.title = canvasOptIn ? 'Return to PNG; preserve the draft and submit manually' : 'Try the shared Canvas renderer on the main page';
   const pending = !selectionEquals(s, appliedSelection)
     || draftDuration !== selectedDuration
     || draftViewMode !== appliedViewMode
@@ -450,6 +544,7 @@ function updSel() {
     UIComponents.flash(summary);
   }
   updateSelectionFreshness();
+  canvasRenderer?.syncControls(canvasCharts());
 }
 
 function makePairs(sel, anchors = []) {
@@ -477,7 +572,7 @@ function makePairs(sel, anchors = []) {
         p.push({ source: src, target: tgt, type: 'v6', ...pairMeta });
     } else {
       [{s:a,t:b},{s:b,t:a}].forEach(x => {
-        p.push({ source: x.s, target: x.t, type: 'v4',
+        if (na.v4 && nb.v4) p.push({ source: x.s, target: x.t, type: 'v4',
           srcLabel: nodes.find(n=>n.id===x.s)?.label, tgtLabel: nodes.find(n=>n.id===x.t)?.label,
           ext: false, pairKey: [a, b].join('_'), direction: x.s === a ? 0 : 1 });
         if (na.v6 && nb.v6)
@@ -932,6 +1027,13 @@ async function showGraphs() {
     return;
   }
   if (generation !== renderGeneration) return;
+  if (canvasOptIn && draftViewMode === 'charts') {
+    await loadCanvasQuery(sel, nextAnchors, nextPairs, generation, signal);
+    return;
+  }
+  canvasLoading = false; canvasSnapshot = null; canvasItemsByKey.clear();
+  canvasRenderer?.reset(); canvasStatus('');
+  document.body.classList.remove('matrix-integrated-trial');
   selectedDuration = draftDuration;
   appliedViewMode = draftViewMode;
   appliedPairMode = draftPairMode;
@@ -970,6 +1072,7 @@ function setUnifiedYAxis(enabled) {
   if (toggle && toggle.checked !== unifiedYAxisEnabled) toggle.checked = unifiedYAxisEnabled;
   updSel();
   if (!chartsEnabled() || currentPairs.length === 0) return;
+  if (canvasCharts()) { canvasRenderer?.setUnified(unifiedYAxisEnabled); return; }
   renderGrid({
     animate: false,
     animateLayout: false,
@@ -991,7 +1094,12 @@ function ensureMainShell() {
   const m = document.getElementById('mainArea');
   if (document.getElementById('graphGrid')) return document.getElementById('graphGrid');
   const charts = chartsEnabled();
-  m.innerHTML = `<div class="grid${charts ? '' : ' stats-only'}" id="graphGrid"></div>`;
+  m.innerHTML = `<p id="canvasStatus" class="trial-status" role="status" hidden></p>
+    <div id="chart-key" class="matrix-key" hidden>
+      <span class="key-rtt">Mean median RTT</span>
+      <span class="key-loss-fill" title="All measured buckets lost packets; width is the interval, height is mean loss">Loss in every bucket</span>
+      <span class="key-loss-peak" title="Peak occurs somewhere within this aggregate interval, not at an exact ping timestamp">Peak within interval</span>
+    </div><div class="grid${charts ? '' : ' stats-only'}" id="graphGrid"></div>`;
   return document.getElementById('graphGrid');
 }
 
@@ -1182,7 +1290,10 @@ function cardContentMarkup(pair, charts) {
     `<span class="badge ${typeBadgeClass}">${typeBadgeLabel}</span>`,
   ].join('');
   let chartMarkup = '';
-  if (charts) {
+  if (charts && canvasOptIn) {
+    chartMarkup = `<div class="card-img trial-plot" role="button" tabindex="0" aria-haspopup="dialog" title="Open interval data"
+      aria-label="View RTT and loss interval data: ${srcLabel} to ${tgtLabel} ${typeBadgeLabel}${pair.ext ? ' external' : ''}"></div>`;
+  } else if (charts) {
     const safeUrl = escapeHtml(requestUrl('/api/graph.png', graphQueryFor(pair)));
     const imgId = imageIdFor(pair);
     const skelId = skeletonIdFor(pair);
@@ -1277,8 +1388,9 @@ function hydrateCard(card, pair, charts, generation, signal) {
   if (charts && batchLoadingGeneration !== generation) syncChartSource(card, pair);
 }
 
-function renderGrid({ animate = true, animateLayout = animate, preserveRequest = false, hydrate = true, loadCharts = false, filterChange = false, selectionChange = false } = {}) {
+function renderGrid({ animate = true, animateLayout = animate, preserveRequest = false, hydrate = true, loadCharts = false, filterChange = false, selectionChange = false, metricPulse = null } = {}) {
   const grid = ensureMainShell();
+  if (canvasCharts()) canvasRenderer?.suspend(true);
   let generation = renderGeneration;
   let signal = activeController?.signal;
   if (!preserveRequest) {
@@ -1290,7 +1402,7 @@ function renderGrid({ animate = true, animateLayout = animate, preserveRequest =
   const charts = chartsEnabled();
   const dur = selectedDuration;
   animate = animate && !UIComponents.reducedMotion();
-  animateLayout = animateLayout && !UIComponents.reducedMotion();
+  animateLayout = animateLayout && !UIComponents.reducedMotion() && !canvasCharts();
   const before = animateLayout ? captureCardRects(grid) : new Map();
   grid.classList.toggle('stats-only', !charts);
   let list = currentPairs;
@@ -1303,7 +1415,7 @@ function renderGrid({ animate = true, animateLayout = animate, preserveRequest =
   list = orderPairsForLayout(list, columns.length < 2);
   // This is intentionally the final axis calculation: it runs only after the
   // current view's filter and layout ordering have produced the visible list.
-  unifiedChartRange = charts && unifiedYAxisEnabled ? computeUnifiedRange(list, dur) : null;
+  unifiedChartRange = charts && !canvasOptIn && unifiedYAxisEnabled ? computeUnifiedRange(list, dur) : null;
   const desired = new Set(list.map(pairIdentity));
   const retained = new Set();
   const index = UIComponents.cardIndex(grid, desired);
@@ -1316,11 +1428,11 @@ function renderGrid({ animate = true, animateLayout = animate, preserveRequest =
     if (!card) {
       card = createCard(pair, charts);
       grid.appendChild(card);
-      if (animate) animateNewCard(card);
+      if (animate && !canvasCharts()) animateNewCard(card);
       else card.classList.remove('card-enter');
     } else {
       cancelCardRemoval(card);
-      updateCardContent(card, pair, charts, animate);
+      updateCardContent(card, pair, charts, animate && !canvasCharts());
       if (selectionChange && previousKey && before.has(previousKey)) {
         lockCardFrame(card, before.get(previousKey));
       }
@@ -1329,13 +1441,25 @@ function renderGrid({ animate = true, animateLayout = animate, preserveRequest =
     card.dataset.slotKey = slotKey;
     retained.add(card);
     if (grid.children[position] !== card) grid.insertBefore(card, grid.children[position] || null);
-    if (hydrate) hydrateCard(card, pair, charts, generation, signal);
+    if (canvasCharts()) {
+      const entry = canvasItemsByKey.get(key), item = entry?.item;
+      card.dataset.index = String(entry?.index);
+      const data = item && !item.error ? { current_ms: item.current?.current_ms,
+        avg_ms: item.summary.average_ms, min_ms: item.summary.min_median_ms,
+        max_ms: item.summary.max_median_ms, loss_pct: item.summary.loss_pct } : null;
+      UIComponents.updateStats(card.querySelector('.stats'), data, false);
+      const plot = card.querySelector('.trial-plot');
+      plot.setAttribute('aria-disabled', String(!!item?.error));
+      plot.classList.toggle('problem', !!item?.error);
+      plot.textContent = item?.error ? `No chart: ${item.error}. Submit again to retry.` : '';
+      canvasRenderer?.colorLoss(card, data?.loss_pct);
+    } else if (hydrate) hydrateCard(card, pair, charts, generation, signal);
     else if (charts && loadCharts) syncChartSource(card, pair);
   });
 
   grid.querySelectorAll('.card[data-card-key]').forEach(card => {
     if (!retained.has(card) && !desired.has(card.dataset.cardKey)) {
-      removeCardAfterFade(card, grid, filterChange ? false : animate);
+      removeCardAfterFade(card, grid, filterChange || canvasCharts() ? false : animate);
     }
   });
 
@@ -1346,7 +1470,12 @@ function renderGrid({ animate = true, animateLayout = animate, preserveRequest =
     noMatches.remove();
   }
   if (animateLayout) animateGridLayout(grid, before);
-  if (charts && (hydrate || loadCharts) && batchLoadingGeneration !== generation) {
+  document.getElementById('chart-key').hidden = !canvasCharts() || !list.length;
+  if (canvasCharts() && canvasSnapshot && !canvasLoading) {
+    const cards = [];
+    for (const card of retained) cards[Number(card.dataset.index)] = card;
+    canvasRenderer.mount(canvasSnapshot, cards, { unified: unifiedYAxisEnabled, enter: animate, pulse: metricPulse });
+  } else if (charts && (hydrate || loadCharts) && batchLoadingGeneration !== generation) {
     observeImages();
     requestAnimationFrame(() => {
       if (chartsEnabled()) observeImages();
@@ -1403,3 +1532,13 @@ function changeDuration(value) {
   draftDuration = value;
   updSel();
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden || !canvasLoading) return;
+  activeController?.abort(); renderGeneration++; canvasLoading = false;
+  canvasStatus('Query paused while hidden. Previous results remain; submit again.');
+});
+window.addEventListener('pagehide', () => {
+  if (!canvasOptIn) return;
+  activeController?.abort(); renderGeneration++; canvasLoading = false;
+});

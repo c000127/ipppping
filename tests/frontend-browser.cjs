@@ -613,10 +613,10 @@ async function main() {
         setPairMode('fixed'); setAnchor('test_0'); setAnchor('test_1');
         changeDuration('21600'); setFilter('ext'); setUnifiedYAxis(true);
       });
-      assert.match(await page.locator('#canvasTrialLink').getAttribute('href'), /^\/chart-matrix-trial\?nodes=/);
+      assert.match(await page.locator('#canvasTrialLink').getAttribute('href'), /^\/\?renderer=canvas&nodes=/);
       await page.locator('#canvasTrialLink').click();
-      await page.locator('.node[data-node-id="test_0"]').waitFor();
-      assert.match(await page.locator('#trialStatus').textContent(), /^Selection restored;/);
+      await page.locator('#n_test_0').waitFor();
+      assert.equal(await page.locator('#canvasTrialLink').textContent(), 'Use PNG Charts ↗');
       assert.equal(await page.locator('.node-cb:checked').count(), 3);
       assert.equal(await page.locator('.node-anchor[aria-pressed="true"]').count(), 2);
       assert.equal(await page.locator('#durSelect').inputValue(), '21600');
@@ -626,7 +626,7 @@ async function main() {
       assert.deepEqual(requests, [], 'opening the trial must not run a query');
       await page.locator('#filterPills [data-filter="v6"]').click();
       await page.locator('#unifiedAxisToggle').uncheck();
-      await page.locator('#pngBackLink').click();
+      await page.locator('#canvasTrialLink').click();
       await page.locator('#n_test_0').waitFor();
       assert.equal(await page.locator('.node-cb:checked').count(), 3);
       assert.equal(await page.locator('.node-anchor[aria-pressed="true"]').count(), 2);

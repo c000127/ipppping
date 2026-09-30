@@ -225,6 +225,44 @@ verified staging release with this flag only if its runtime still matches;
 otherwise use the reviewed paired API/frontend recovery procedure. See
 [actual releases and rollback evidence](FRONTEND_PUBLIC_RELEASE.md).
 
+### Main Canvas configuration and acceptance
+
+The source/default `python build_web.py` remains PNG-configured until the
+recorded release gate allows promotion. Prepare a Canvas-default variant with:
+
+```bash
+python -c "from build_web import build; build('web', 'build/web-release-main-default', default_renderer='canvas')"
+```
+
+Package that variant at the staging path `build/web-release`; do not silently
+point the installer at a different build folder. The setting changes only
+main HTML's `data-chart-renderer`; the 13 immutable assets match PNG.
+Explicit `/?renderer=png` always wins; Results keeps its existing API.
+No automatic query or PNG fallback occurs. Keep verified PNG staging and all
+old assets for existing tabs.
+
+Main-default G4 must test the actual configured build, normal visible drawing
+and motion, 120-point full-matrix scrolling and the unchanged 60-minute gate.
+An independent trial or interrupted run cannot substitute. The explicitly
+opted-in `tests/production-main-rollout.cjs` verifies exact gate/stages,
+default→PNG→default and old tabs; see the [main report](FRONTEND_MAIN_CANVAS_REPORT.md).
+
+After final default restoration, take an immediate baseline and hourly
+read-only samples with the actual ISO UTC timestamp/final build fingerprint:
+
+```powershell
+$env:MAIN_OBSERVATION_PASS='1'
+$env:TEST_RELEASE_ROOT='build/web-release-main-default'
+$env:OBSERVATION_STARTED_AT='<actual-final-default-restoration-ISO-UTC>'
+node tests/production-main-observe.cjs
+```
+
+Use installed Chrome and the project's test runtime. The script reads
+production and writes only an ignored local report; it cannot deploy, restart,
+delete, or touch nodes. Its 24/48-hour gate needs continuous sampled evidence,
+not two endpoints. Stop after the finite window and investigate failures;
+never reset timestamps to turn missing coverage into a pass.
+
 - Confirm the working tree contains no private node file, RRD, log, key, or
   secret.
 - Run backend tests and syntax checks.

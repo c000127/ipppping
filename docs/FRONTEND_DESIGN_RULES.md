@@ -124,6 +124,11 @@ borderless dialog inside the viewport and scroll the table internally;
 never overflow the page. These details do not restore a Last measurement
 line or freshness badges inside result cards.
 
+Acceptance diagnostics must not change those card rules. A frozen-window
+`outside_window` current stays unknown/null even if a separate live health
+witness is fresh. Do not backfill chart numbers/timestamps or add status copy
+because the production observation uses an independent raw-measurement read.
+
 ## Explicit Canvas trial entry
 
 The production page defaults to Canvas. On the manual PNG page, “Try Canvas

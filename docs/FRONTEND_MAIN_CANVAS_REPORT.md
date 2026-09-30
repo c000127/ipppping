@@ -6,8 +6,10 @@ The fresh actual main-default 60-minute run passed the original G4 numerical
 gate. Authorized default→PNG→default, public fingerprints and old tabs passed
 at 13:42:40.783 UTC (21:42 Singapore time), without API restart.
 The user shortened production observation from 12 hours to one hour. Its
-first freshness assertion failed at 13:46:47.144 UTC; follow-up is paused,
-the failed sample is retained, and G5 observation is not accepted.
+first freshness assertion failed at 13:46:47.144 UTC; that report is retained.
+The user explicitly authorized a corrected, separate observation starting
+at 14:15:56.093 UTC (22:15 Singapore time), with a passing baseline and active
+finite follow-up. G5 observation is still pending, not accepted.
 
 ## Implemented boundaries
 
@@ -39,7 +41,7 @@ the failed sample is retained, and G5 observation is not accepted.
 
 ## Regression evidence
 
-85 Python tests and 16 Node test entries passed. Installed Chrome
+85 Python tests and 28 Node test entries passed. Installed Chrome
 154.0.8037.59 passed existing main regression, shared trial 480/499 routes
 and axe checks. `tests/main-canvas-browser.cjs` passed both HTML configurations:
 lazy/default no-auto-submit, multi-Fixed Ext v4/v6, frozen axes, cached details/
@@ -104,8 +106,9 @@ gate and staging fingerprints. It verifies real default→PNG→default,
 all public pages/assets, old PNG/Canvas tabs, manual PNG and unchanged API
 PID/start/restarts; failure attempts verified PNG recovery.
 
-`tests/production-main-observe.cjs` takes low-rate read-only samples from the
-actual final default restoration. Timestamp/fingerprint cannot be silently
+`tests/production-main-observe.cjs` takes low-rate read-only samples of the
+actual final default release. The approved replacement window distinguishes
+its observation start from the unchanged release timestamp; these cannot be silently
 reset or mixed. Per the user's latest 2026-09-30 revision, completion needs ≥5
 passing samples spanning one real hour, distinct 15-minute bins, baseline
 within 15 minutes and no >30-minute gaps. The report uses `requiredHours=1`,
@@ -213,7 +216,7 @@ response; recovery restored verified PNG automatically. The diagnostic report
 The test now requires a fresh successful PNG response and its decoded image;
 no product bytes, original resource gates or assertions were weakened.
 
-## Observation failure: retained evidence, follow-up paused
+## Historical first observation failure: retained evidence
 
 The real release start remains `2026-09-30T13:42:40.783Z`. The first sample at
 13:46:47.144 UTC has `passed=false` and `complete1h=false`. API/Caddy were
@@ -245,3 +248,44 @@ matrix two/four external routes, interval reuse, multi-Fixed animation, mobile
 metrics, structural dividers and all 13 asset hashes. Page errors were zero;
 known CDN-injected scripts remained blocked by CSP. These checks do not erase
 the failed observation or constitute its missing one-hour coverage.
+
+## User-authorized health correction and new finite observation
+
+The user explicitly approved correcting the health assertion, retaining the
+failure, and starting a separate window. No production byte or configuration
+changed and no rollout was repeated. The original release remains
+`2026-09-30T13:42:40.783Z`. The original failed report remains byte-identical:
+SHA-256 `ad7710bc4114218c8c508e3dd6a0d7645a2c435aa88c613f3c94e5c9544667a3`.
+
+`tests/observation-health.cjs` separately validates the known v4 frozen
+summary and one independent `GET /api/stats?...&state=p1` health witness.
+The latter is a diagnostic request, not a browser legacy fetch or PNG
+fallback. It must report measured raw RTT or loss and a real measurement
+timestamp (age ≤300 seconds, future skew ≤60 seconds, unchanged thresholds).
+An RRD write, average, null input or missing/unknown state cannot stand in.
+100% loss remains a measurement. A recent summary's `outside_window` is
+accepted only when its raw input is newer than its frozen end and all its
+current values stay null, backed by independent real measured evidence.
+Normal measured current must still belong to its window; stale/historical
+summaries fail even with a fresh live witness. Twelve new regression tests
+exercise those cases; all 28 Node tests pass.
+
+New report: `test-results/main-canvas-observation-health-v2.json`, schema
+`ipppping.production-observation.health-v2`, startedAt
+`2026-09-30T14:15:56.093Z`, separately retained releasedAt above and the
+original failure checksum. The runner requires the successful rollout's
+manifest and unchanged API PID/restarts/start even for this new baseline.
+It rejects changed timestamps/fingerprints/evidence, prior failure/completion
+or an expired window. Each sample verifies main HTML and the actually loaded
+asset hashes, Ext/v4/v6 labels, ≤4 chart instances, ≤3 summary attempts,
+≤2 known-route series requests and no browser legacy/PNG fan-out.
+
+Baseline at 14:15:56.450 UTC passed: measured state, two charts, one summary
+and two series, no page errors, ten loaded asset hashes verified. API memory
+42,172,416 bytes, host available 1,226,297,344 bytes, zero swap; API identity
+unchanged. `complete1h=false` remains pending. The same finite thread follow-up
+is active every 15 minutes, quiet unless completion/failure/action is needed.
+Observation stops by 16:15:56.093 UTC (at most eight samples); a later scheduled
+wakeup can only report expiry, not backfill samples. One hour must be covered
+by real passing samples; the independent trial's uptime and the failed prior
+window cannot be added. Keep the local machine awake or missed coverage fails.

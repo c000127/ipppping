@@ -248,13 +248,16 @@ An independent trial or interrupted run cannot substitute. The explicitly
 opted-in `tests/production-main-rollout.cjs` verifies exact gate/stages,
 default→PNG→default and old tabs; see the [main report](FRONTEND_MAIN_CANVAS_REPORT.md).
 
-After final default restoration, take an immediate baseline and 15-minute
-read-only samples with the actual ISO UTC timestamp/final build fingerprint:
+The first post-restoration observation failed and is retained. The user
+explicitly authorized a new finite window with corrected health semantics.
+Continue only that existing window (do not replace its start with now):
 
 ```powershell
 $env:MAIN_OBSERVATION_PASS='1'
+$env:NODE_PATH='C:/Users/chow/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules'
 $env:TEST_RELEASE_ROOT='build/web-release-main-default'
-$env:OBSERVATION_STARTED_AT='<actual-final-default-restoration-ISO-UTC>'
+$env:OBSERVATION_REPORT='test-results/main-canvas-observation-health-v2.json'
+$env:OBSERVATION_STARTED_AT='2026-09-30T14:15:56.093Z'
 node tests/production-main-observe.cjs
 ```
 
@@ -266,11 +269,15 @@ distinct quarter-hour bins, baseline within 15 minutes and no gap over 30
 minutes. `complete1h` is the verdict; two endpoints are insufficient. The
 runner permits fewer than eight existing samples and no execution after two
 hours. Stop and investigate failures; never reset timestamps or failed samples.
-The 2026-09-30 rollout passed but the first observation freshness assertion
-failed; follow-up is paused, not accepted. `current.measurement_updated_at`
-can legitimately be null when a newer raw update is outside a frozen v2
-window. Any revised health assertion needs explicit, tested semantics and a
-separately authorized observation window; do not fabricate a passing baseline.
+The original `test-results/main-canvas-observation.json` must stay byte-identical;
+the new report binds its checksum and retains `releasedAt=2026-09-30T13:42:40.783Z`
+separately from the authorized `startedAt`. The new baseline passed, follow-up
+is active and completion is pending. Window-local current may legitimately be
+null for newer raw input; the corrected assertion validates that contract
+and one separate known v4 P1 raw-measurement read, keeping the original
+300-second age/60-second future limits. It never invents timestamps or
+substitutes an RRD write for a measurement. The deadline is 16:15:56.093 UTC;
+do not query beyond it or reuse failed/completed windows. See the main report.
 
 - Confirm the working tree contains no private node file, RRD, log, key, or
   secret.

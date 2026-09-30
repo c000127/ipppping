@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-30 — Authorized independent health witness and new observation
+
+- Kept the failed observation byte-identical and the actual release timestamp
+  unchanged. User explicitly approved a separate one-hour retry, started
+  14:15:56.093 UTC with a passing baseline; finite follow-up is active, G5 pending.
+- Corrected the acceptance test, not production: validate frozen current and
+  one independent P1 raw-current diagnostic GET. Outside-window nulls stay
+  null. Real measured evidence must still be ≤300 seconds old / ≤60 seconds
+  in the future; missing inputs and RRD writes alone cannot pass. Twelve new
+  health regression cases pass, along with all 28 Node test entries.
+- Bound the new report to the rollout fingerprint, original failure checksum
+  and unchanged API identity; verified actual HTML/loaded assets, protocol
+  tags and bounded requests. No deployment, API restart, sampling/node/RRD
+  changes or added browser legacy requests. No elapsed-time-only acceptance.
+
 ## 2026-09-30 — Canvas default rollout; one-hour observation paused
 
 - Passed the actual main-default 60-minute frozen-build gate unchanged:

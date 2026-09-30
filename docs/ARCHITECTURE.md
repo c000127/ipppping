@@ -136,6 +136,14 @@ multiuser and rollout limitations are in the [P4 report](FRONTEND_P4_REPORT.md).
 Frontend-only deployments require identical runtime bytes and avoid API
 restart; the unchanged default install mode still handles API upgrades.
 
+Production acceptance does not mistake frozen-window current for live health.
+The user-authorized replacement one-hour observation preserves the original
+release timestamp and failed report, and reads one known v4 P1 raw-current
+witness outside the browser per 15-minute pass. This is a diagnostic side
+channel, not page auto-refresh, fallback, or an additional runtime service.
+Missing measurements/RRD writes cannot prove health; the original 300-second
+measurement age and 60-second future-skew limits remain. Completion is pending.
+
 ### P2 and isolated P3 trial (deployed 2026-09-23)
 
 P2 extracts DOM helpers and uses fingerprinted assets. P3 adds `series_contract.py`

@@ -21,6 +21,8 @@ const scrollPath = process.env.SOAK_PATH || 'three-positions';
 assert.ok(['three-positions', 'sweep'].includes(scrollPath));
 const seriesPoints = Number(process.env.MATRIX_SERIES_POINTS || 2);
 assert.ok([2, 120].includes(seriesPoints));
+const axisFormat = process.env.SOAK_FORMAT || 'normal';
+assert.ok(['normal', 'shared'].includes(axisFormat));
 const manifestBytes = fs.readFileSync(path.join(root, releaseRoot, 'manifest.json'));
 const manifest = JSON.parse(manifestBytes);
 const chartAsset = Object.keys(manifest.assets).find(name => name.startsWith('chart-matrix-trial.') && name.endsWith('.js'));
@@ -125,6 +127,21 @@ async function privateMemory(protocol) {
     await send('Emulation.setDeviceMetricsOverride', { ...viewport, mobile: false });
     if (networkInspector !== 'off') await send('Network.enable', networkInspector === 'zero-buffer'
       ? { maxTotalBufferSize: 0, maxResourceBufferSize: 0 } : {});
+    if (axisFormat === 'shared') await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+      const original = Date.prototype.toLocaleTimeString;
+      const options = { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false };
+      const formatter = new Intl.DateTimeFormat('en-GB', options);
+      window.__sharedAxisFormatCalls = 0;
+      window.__axisFormatterEquivalent = Array.from({ length: 24 }, (_, i) => new Date(1790683200000+i*3600000))
+        .every(date => original.call(date, 'en-GB', options) === formatter.format(date));
+      Date.prototype.toLocaleTimeString = function(locale, supplied) {
+        if (locale === 'en-GB' && supplied?.timeZone === options.timeZone && supplied.hour === '2-digit' &&
+            supplied.minute === '2-digit' && supplied.hour12 === false && !supplied.second) {
+          window.__sharedAxisFormatCalls++; return formatter.format(this);
+        }
+        return original.call(this, locale, supplied);
+      };
+    })()` });
     const evaluate = async expression => {
       const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
       if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
@@ -148,10 +165,11 @@ async function privateMemory(protocol) {
     const settled = ready + " && ChartMatrixTrial.instanceCount > 0 && ChartMatrixTrial.pendingCount === 0 && " +
       "document.querySelectorAll('.trial-reveal').length === 0 && document.getAnimations().length === 0";
     await until(settled);
+    if (axisFormat === 'shared') assert.equal(await evaluate('window.__axisFormatterEquivalent'), true);
     assert.equal(await evaluate("document.querySelectorAll('.card').length"), 480);
     if (viewport.width === 1800) assert.equal(await evaluate('ChartMatrixTrial.instanceCount + ChartMatrixTrial.pooledCount'), 4);
     const report = { driver: 'direct-cdp', browser: browser.product, networkInspector, viewport,
-      soakSeconds, soakPattern: 'scroll', scrollPath, seriesPoints,
+      soakSeconds, soakPattern: 'scroll', scrollPath, seriesPoints, axisFormat,
       soakView: 'charts', soakRender: 'normal', soakMotion: 'normal',
       releaseRoot, releaseManifestSha256: hash(manifestBytes), chartAsset,
       fixtureHarnessSha256: hash(fs.readFileSync(path.join(__dirname, 'chart-matrix-browser.cjs'))),
@@ -170,7 +188,7 @@ async function privateMemory(protocol) {
           cache: ChartMatrixTrial.cacheCount, cacheBytes: ChartMatrixTrial.cacheBytes, pending: ChartMatrixTrial.pendingCount,
           canvases: document.querySelectorAll('canvas').length,
           pixels: [...document.querySelectorAll('canvas')].reduce((n,c) => n+c.width*c.height,0),
-          animations: document.getAnimations().length,
+          animations: document.getAnimations().length, sharedAxisFormatCalls: window.__sharedAxisFormatCalls || 0,
           scrollTop: document.getElementById('mainArea').scrollTop,
           routeIndexes: [...document.querySelectorAll('canvas')].map(c => Number(c.closest('.card').dataset.index)) })`), privateMemory(protocol)
       ]);

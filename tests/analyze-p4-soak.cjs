@@ -18,6 +18,8 @@ assert.ok(!report.soakRender || report.soakRender === 'normal',
   'the G4 gate requires actual visible Canvas rendering');
 assert.ok(!report.soakMotion || report.soakMotion === 'normal',
   'the full G4 gate requires normal production motion');
+assert.ok(!report.axisFormat || report.axisFormat === 'normal',
+  'runtime formatter overrides are diagnostic, not a fingerprinted production build');
 const rows = [...report.samples].sort((a, b) => a.elapsed - b.elapsed);
 const end = rows.at(-1).elapsed;
 assert.ok(Number.isFinite(end) && end >= 3600000,

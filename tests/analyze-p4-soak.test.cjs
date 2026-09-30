@@ -33,7 +33,8 @@ test('an incomplete or actually shorter run cannot pass by claiming 3600 seconds
 });
 test('Network recording and non-production isolation controls are not release gates', () => {
   for (const [field, value] of [['networkInspector', 'default'], ['soakPattern', 'static'],
-    ['soakView', 'results'], ['soakRender', 'no-paint'], ['soakRender', 'hidden-canvas'], ['soakMotion', 'reduce']]) {
+    ['soakView', 'results'], ['soakRender', 'no-paint'], ['soakRender', 'hidden-canvas'],
+    ['soakMotion', 'reduce'], ['axisFormat', 'shared']]) {
     const report = fixture(); report[field] = value;
     assert.notEqual(run(report).status, 0, field + '=' + value);
   }

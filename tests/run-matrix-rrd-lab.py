@@ -5,7 +5,7 @@ restart a service. The default 480 hard links share one hot inode. Optional
 distinct files test inode fan-out; cold-hint asks Linux to evict only these
 temporary files and reports actual child disk reads, without dropping global
 page cache. This remains an isolated lab, not production cold-disk proof.
-Usage: python tests/run-matrix-rrd-lab.py root@HOST PORT [workers=4] [shared|distinct|cold-hint] [serial|multiuser]
+Usage: python tests/run-matrix-rrd-lab.py root@HOST PORT [workers=4] [shared|distinct|cold-hint] [serial|multiuser] [seconds=120|600]
 """
 import json
 from pathlib import Path
@@ -135,16 +135,17 @@ with tempfile.TemporaryDirectory(prefix='ipppping-p4-lab-',
         from concurrent.futures import ThreadPoolExecutor
         server.STATS_CACHE.clear()
         counts.update(calls=0, active=0, peak=0)
-        duration, clients, think_seconds = 120, 3, 2
+        duration, clients, think_seconds = lab_seconds, 3, 2
         stop = threading.Event()
         barrier = threading.Barrier(clients)
-        outcomes, rss_samples, stopped_for_memory = [], [], False
+        outcomes, rss_samples, stopped_for_memory, stopped_for_load = [], [], False, False
         def current_memory():
             rss = next(int(line.split()[1]) for line in pathlib.Path('/proc/self/status').read_text().splitlines()
                        if line.startswith('VmRSS:'))
             available = next(int(line.split()[1]) for line in pathlib.Path('/proc/meminfo').read_text().splitlines()
                              if line.startswith('MemAvailable:'))
-            return {'rss_kib': rss, 'host_available_kib': available}
+            return {'rss_kib': rss, 'host_available_kib': available,
+                    'host_load_one': os.getloadavg()[0]}
         multi_started = time.monotonic()
         deadline = multi_started + duration
         multi_child_before = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -163,6 +164,11 @@ with tempfile.TemporaryDirectory(prefix='ipppping-p4-lab-',
                             break
                         params = {'nodes': [selected], 'dur': ['10800'], 'end': [str(query_end)],
                                   'offset': [str(offset)], 'limit': ['32']}
+                        if mode == 'cold-hint':
+                            # Only the lab's own temporary inodes, never global page cache.
+                            for link in route_files[offset:offset+32]:
+                                with link.open('rb') as temporary:
+                                    os.posix_fadvise(temporary.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
                         request_started = time.monotonic()
                         body, status = server.handle_v2_summary_batch(params)
                         if status == 200:
@@ -199,6 +205,10 @@ with tempfile.TemporaryDirectory(prefix='ipppping-p4-lab-',
                     stopped_for_memory = True
                     stop.set()
                     break
+                if sample['host_load_one'] > 1.5 * (os.cpu_count() or 1):
+                    stopped_for_load = True
+                    stop.set()
+                    break
                 stop.wait(2)
             stop.set()
             outcomes = [future.result() for future in futures]
@@ -208,6 +218,7 @@ with tempfile.TemporaryDirectory(prefix='ipppping-p4-lab-',
         assert server.STATS_CACHE.bytes <= 8 * 1024 * 1024 and len(server.STATS_CACHE.entries) <= 256
         assert latencies and not any(result['errors'] for result in outcomes)
         assert not stopped_for_memory, 'isolated lab memory safety threshold reached'
+        assert not stopped_for_load, 'isolated lab host load safety threshold reached'
         report['multiuser'] = {'simulated_clients': clients, 'scheduled_seconds': duration,
                               'observed_seconds': time.monotonic() - multi_started,
                               'think_seconds_per_page': think_seconds, 'retry_limit': 2,
@@ -216,10 +227,13 @@ with tempfile.TemporaryDirectory(prefix='ipppping-p4-lab-',
                               'rrdtool_calls': counts['calls'], 'peak_rrdtool_processes': counts['peak'],
                               'child_cpu_ms': ((multi_child_after.ru_utime + multi_child_after.ru_stime) -
                                                (multi_child_before.ru_utime + multi_child_before.ru_stime)) * 1000,
+                              'child_input_blocks': multi_child_after.ru_inblock - multi_child_before.ru_inblock,
+                              'child_major_faults': multi_child_after.ru_majflt - multi_child_before.ru_majflt,
                               'page_ms': {'median': latencies[len(latencies)//2],
                                           'p95': latencies[min(len(latencies)-1, int(len(latencies)*.95))]},
                               'clients': outcomes, 'memory_samples': rss_samples,
                               'stopped_for_memory': stopped_for_memory,
+                              'stopped_for_load': stopped_for_load,
                               'cache_items_at_end': len(server.STATS_CACHE.entries),
                               'cache_bytes_at_end': server.STATS_CACHE.bytes,
                               'production_capacity_proof': False}
@@ -228,7 +242,7 @@ with tempfile.TemporaryDirectory(prefix='ipppping-p4-lab-',
 '''
 
 if __name__ == '__main__':
-    if len(sys.argv) not in (3, 4, 5, 6):
+    if len(sys.argv) not in (3, 4, 5, 6, 7):
         raise SystemExit(__doc__)
     workers = int(sys.argv[3]) if len(sys.argv) >= 4 else 4
     if workers not in (1, 2, 4):
@@ -236,22 +250,28 @@ if __name__ == '__main__':
     mode = sys.argv[4] if len(sys.argv) >= 5 else 'shared'
     if mode not in ('shared', 'distinct', 'cold-hint'):
         raise SystemExit('mode must be shared, distinct or cold-hint')
-    scenario = sys.argv[5] if len(sys.argv) == 6 else 'serial'
+    scenario = sys.argv[5] if len(sys.argv) >= 6 else 'serial'
     if scenario not in ('serial', 'multiuser'):
         raise SystemExit('scenario must be serial or multiuser')
+    lab_seconds = int(sys.argv[6]) if len(sys.argv) == 7 else 120
+    if lab_seconds not in (120, 600) or len(sys.argv) == 7 and scenario != 'multiuser':
+        raise SystemExit('seconds must be 120 or 600 and applies only to multiuser')
     payload = {name: (ROOT / name).read_text(encoding='utf-8') for name in FILES}
     script = ('payload = ' + repr(payload) + '\nworker_limit = ' + repr(workers) +
-              '\nmode = ' + repr(mode) + '\nscenario = ' + repr(scenario) + '\n' + REMOTE)
+              '\nmode = ' + repr(mode) + '\nscenario = ' + repr(scenario) +
+              '\nlab_seconds = ' + repr(lab_seconds) + '\n' + REMOTE)
     result = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10',
                              '-o', 'StrictHostKeyChecking=yes', '-p', sys.argv[2],
                              sys.argv[1], 'python3', '-'], input=script.encode(),
-                            capture_output=True, timeout=300)
+                            capture_output=True, timeout=lab_seconds + 180)
     if result.returncode:
         raise SystemExit(result.stderr.decode(errors='replace'))
     report = json.loads(result.stdout)
     suffix = '-' + mode if mode != 'shared' else ''
     if scenario != 'serial':
         suffix += '-' + scenario
+        if lab_seconds != 120:
+            suffix += '-' + str(lab_seconds) + 's'
     target = ROOT / f'test-results/p4-matrix-rrd-lab-{workers}{suffix}.json'
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(report, indent=2), encoding='utf-8')

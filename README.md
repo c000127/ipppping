@@ -58,6 +58,13 @@ The 2026-10-01 [visual follow-up](docs/FRONTEND_UI_SURFACES_REPORT.md) unifies
 Results/Canvas/PNG surfaces and introduces compact Fixed pins without a
 runtime restart or new observation window.
 
+A separate [low-resource NAT/SLAAC node trial](docs/NODE_SMALL_HOST_REPORT.md)
+on 2026-10-01 passed finite sampling and peer-integration checks before enrollment.
+It retains 60-second/20-ping probes and 256 MiB zram, but usable RAM is tight;
+NAT IPv4 replies may measure the gateway. This is not long-term capacity proof.
+The guarded [Debian Docker bootstrap](deploy/smokeping/install-docker-debian.py)
+uses the official repository without a distribution upgrade.
+
 On either matrix Canvas entry, click a plot or press Enter/Space to inspect
 up to 120 interval rows. The modal reuses the chart's frozen series, closes
 with Escape, and releases its table on close. This does not enable automatic

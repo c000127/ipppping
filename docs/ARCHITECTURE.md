@@ -175,3 +175,15 @@ costs, tests, deployment checks, and remaining long-duration validation.
 user that can read the API RRD tree. SmokePing requires its own permissions,
 raw-network capabilities, and configuration. The reverse proxy is the only
 component that should be reachable from the public network.
+
+### NAT/SLAAC probe-node integration (2026-10-01)
+
+NAT IPv4 does not require inbound collector web access: the slave continues to
+upload through the existing signed HTTPS protocol. An A-only DDNS target keeps
+the hostname for per-round resolution, but incoming ICMP may measure the NAT
+gateway, not the guest. Independent IPv6 is a distinct guest-reachability path.
+The private inventory may include optional credential-free `ssh_user` metadata
+for non-root/sudo administration; keys and passwords are never inventory fields.
+API nodes are loaded at startup, so adding a node requires a scoped API restart;
+master target enrollment also requires collector HUP as well as CGI config-version
+refresh. See the [finite small-host evidence and resource limits](NODE_SMALL_HOST_REPORT.md).

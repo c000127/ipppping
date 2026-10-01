@@ -14,3 +14,9 @@ The master and slave Compose files use host networking because FPing/FPing6 and
 TCPPing need network access. That also means container listeners are host
 listeners. Run `ss -H -lntp` after each deployment and keep the slave's web
 service disabled unless it is explicitly needed.
+
+`smokeping/install-docker-debian.py` bootstraps a new Docker-free Debian host
+using Docker's official repository, with conflict/overwrite guards and no
+distribution upgrade. Run its guard tests with
+`python -m unittest test_docker_debian_install`. Existing Docker installations
+need separate review; the script intentionally refuses to adopt them.

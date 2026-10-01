@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-10-01 — Finite small-host NAT/SLAAC node trial and enrollment
+
+- Added guarded new-host Debian Docker bootstrap using the official apt
+  repository, required five packages, no recommends/distro upgrade/removal;
+  refuses conflicts, partial vendor installs and existing/alternate sources.
+- Tamago HKT passed isolated 38-target/60-second/20-ping testing before normal
+  signed-upload production enrollment. Existing 256 MiB lz4 zram retained;
+  unrelated services left running. Original image digest/runtime safeguards kept.
+- All 65 assigned incoming/outgoing paths contain real advancing measurements;
+  all 42 canonical slave/probe checks pass. Chrome verifies alphabetical
+  placement, v4/v6 badges, four bidirectional Results cards and four Canvas plots.
+- Private node/inventory/config backups retained, optional non-root `ssh_user`
+  metadata supported, no credentials/IPs/private reports committed. One planned
+  API restart loaded the new inventory; no code/UI/proxy/sample change or old
+  frontend observation rewrite. Trial stopped and preserved, not deleted.
+- 96 Python tests pass, including seven installer guard tests. Low memory margin,
+  swapped collector pages, NAT gateway semantics and unmeasured reboot/DDNS
+  rotation/long-term capacity are explicit in the [node report](NODE_SMALL_HOST_REPORT.md).
+
 ## 2026-10-01 — Unified page surfaces and compact Fixed pins
 
 - Moved the neutral palette, badge/selected-node styling and corners to the

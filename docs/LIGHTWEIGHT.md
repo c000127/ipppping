@@ -167,6 +167,31 @@ files. If no prior override existed, use the untouched base Compose alone.
 This returns to the previous configuration, including its known PID defect;
 do not regard rollback as a long-term repair. No RRD data needs deletion.
 
+## Small NAT/SLAAC nodes
+
+Use an A-only DDNS hostname in the private IPv4 target/inventory rather than
+freezing its current A record. The validated FPing implementation passes the
+hostname to a fresh fping invocation each round; resolver TTLs still apply.
+Do not claim a real DDNS address rotation was tested without observing one.
+NAT ICMP may measure the gateway rather than the VM: outbound results still
+measure the VM's path, but inbound IPv4 results must be described as the public
+NAT endpoint. Independent IPv6 can monitor the actual guest.
+
+Check the actual IPv6 network manager and RA route renewal before/after Docker
+installation. A kernel `accept_ra=0` alone does not prove broken SLAAC when
+systemd-networkd handles RAs in userspace. Do not change global forwarding/RA
+settings or disable unrelated DDNS/monitoring services to improve trial numbers.
+
+Preserve 60-second steps, 20 pings and all three probes when testing a small
+dual-stack slave. First test the real target count in isolation; then validate
+signed upload, all assigned incoming/outgoing RRD measurements and the public
+API. A healthy process or fresh but unknown RRD is insufficient. For a new
+master target, validate config, advance the main config mtime, gracefully reload
+the CGI workers **and HUP the collector's supervised parent**, then confirm new
+RRDs contain loss values. Included-file mtime or CGI reload alone is insufficient.
+
+See [finite small-host test and limitations](NODE_SMALL_HOST_REPORT.md).
+
 ## Upstream references
 
 - [SmokePing command-line and foreground/slave operation](https://oss.oetiker.ch/smokeping/doc/smokeping.en.html)

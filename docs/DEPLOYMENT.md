@@ -23,10 +23,27 @@ the distribution's unofficial `docker.io` package. The supported release list
 and the canonical commands are maintained in the [Docker Engine installation
 guide for Debian](https://docs.docker.com/engine/install/debian/).
 
-The repository-based installation sequence is:
+For a new Docker-free Debian 12/13 host, the reviewed helper follows that
+repository-based procedure, omits optional recommended packages, and validates
+`hello-world`. It refuses existing/conflicting packages, a Docker key, or a
+Docker apt source (including alternate filenames). It never removes packages,
+upgrades the distribution, or rewrites a pre-existing Docker repository:
 
 ```bash
-# Remove packages that can conflict with Docker Engine from Docker's repository.
+sudo python3 deploy/smokeping/install-docker-debian.py
+```
+
+Inspect errors before retrying: a partially completed installation requires
+manual recovery, not a second blind bootstrap. Python 3 must already exist.
+The helper's release allowlist is deliberately conservative; review the current
+official guide before extending it. See the [small-host trial](NODE_SMALL_HOST_REPORT.md)
+for actual startup/steady-state observations, not a universal minimum RAM claim.
+
+The manual repository-based installation sequence is:
+
+```bash
+# First inspect conflicts. Removing them may interrupt unrelated workloads;
+# do not execute removal until the operator has reviewed the exact packages.
 conflicts=$(dpkg-query --show --showformat='${binary:Package}\n' \
   docker.io docker-compose docker-doc docker-buildx podman-docker containerd runc \
   2>/dev/null || true)
@@ -59,6 +76,13 @@ sudo systemctl status docker --no-pager
 sudo docker run --rm hello-world
 docker compose version
 ```
+
+For a minimal host the two `apt install` commands may use
+`--no-install-recommends`; all five required Docker packages above remain
+installed. Docker Engine, containerd and probe processes still consume memory
+even when the slave's Apache is disabled. Do not report Docker's resident-memory
+snapshot as total footprint: record `memory.swap.current`, host zram physical
+usage, MemAvailable, PSI and OOM counters as well.
 
 Docker's Debian guide warns that published container ports can bypass `ufw` or
 `firewalld`; review the host firewall and place Docker-specific filtering in

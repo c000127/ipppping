@@ -129,6 +129,37 @@ guard tests. This is not long-term leak freedom, reboot testing, DDNS rotation
 testing, or an unlimited expansion guarantee. Adding unrelated services or many
 more targets to this host needs a new resource check; current RAM margin is low.
 
+## IPv6 address maintenance — 2026-10-01
+
+At the user's request, the private Tamago IPv6 target, credential-free inventory
+and legacy address list were synchronized to a replacement address at
+22:57:48 Singapore time. Production addresses remain outside this repository.
+The API's boolean capabilities/alias did not change; API PID 4089341 and
+NRestarts=0 remained unchanged, with no API restart or frontend release.
+IPv4 DDNS, probes, 60-second/20-ping sampling and existing RRD history were retained.
+
+The three original files and restore manifest remain in the mode-0700 directory
+`/root/ipppping-tamago-ipv6-backup-20261001T145747Z`. SmokePing validation passed;
+the CGI workers were gracefully reloaded, main config version advanced and
+the collector parent HUPed to synchronize peers through the existing protocol.
+
+The new address answered three controller ICMPv6 probes. Direct DDNS SSH on its
+existing external port initially closed the connection; an IPv6 connection through the
+controller was verified against the **existing** SSH host-key alias, using local
+authentication without forwarding/copying a private key. The guest had the new
+address and an RA default route; all required probes were healthy, no container
+restart. No guest network/SSH/firewall configuration was changed. A later retry
+of the original DDNS SSH endpoint succeeded and probe health passed; the initial
+management-path failure was transient, not counted as a passing login.
+
+At 23:01:58 Singapore time, all 12 incoming IPv6 RRDs (controller plus 11 assigned
+peers) contained post-change, non-unknown loss measurements no older than 300
+seconds and received actual replies. The last slower peer's logs confirmed a
+new master configuration and graceful probe reload; it is included in the gate.
+The site's P1 IPv6 stats returned `measurement_state=measured` and current loss
+0% for a JP peer. Historical window loss can still include the earlier old-prefix
+outage; no RRD/cache history was cleared or rewritten to hide it.
+
 ## References
 
 - [Official Docker Debian apt-repository installation](https://docs.docker.com/engine/install/debian/)

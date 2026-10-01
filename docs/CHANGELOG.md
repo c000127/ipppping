@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-01 — Tamago IPv6 address synchronization
+
+- Updated only the private IPv6 target and two address inventories, with retained
+  restore copies. Validated SmokePing, advanced its main configuration version,
+  gracefully reloaded CGI and HUPed the collector for normal peer synchronization.
+- Controller and all 11 assigned IPv6 peers produced post-change, fresh
+  non-unknown measurements and actual replies. Site P1 stats show measured current
+  data; historical old-prefix outage remains in its original RRD window.
+- No API restart, frontend release, secret/SSH/network alteration, IPv4 DDNS,
+  sampling/probe or history/cache change. A transient DDNS SSH failure recovered
+  on retry. See the [sanitized maintenance record](NODE_SMALL_HOST_REPORT.md).
+
 ## 2026-10-01 — Finite small-host NAT/SLAAC node trial and enrollment
 
 - Added guarded new-host Debian Docker bootstrap using the official apt

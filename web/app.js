@@ -364,12 +364,12 @@ function nodeRow(n) {
   const id = escapeHtml(n.id);
   const label = escapeHtml(n.label);
   return `<div class="node" id="n_${id}" data-node-id="${id}">
-    <label class="node-select" for="c_${id}">
+    <label class="node-select" for="c_${id}" title="${label}">
       <input type="checkbox" class="node-cb" id="c_${id}" data-id="${id}">
       <span class="node-label">${label}</span>
       ${meta}
     </label>
-    <button class="node-anchor" type="button" data-anchor-node="${id}" aria-label="Use ${label} as fixed node" title="Use this node as a fixed node">Fix</button>
+    <button class="node-anchor" type="button" data-anchor-node="${id}" aria-label="Use ${label} as fixed node" title="Use ${label} as a fixed node">${UIComponents.fixedNodeIcon()}</button>
   </div>`;
 }
 
@@ -391,10 +391,9 @@ function updatePairingControls() {
     row.classList.toggle('anchor-on', anchor);
     if (button) {
       button.disabled = !selected;
-      button.textContent = anchor ? 'Fixed' : 'Fix';
       button.setAttribute('aria-pressed', String(anchor));
       button.setAttribute('aria-label', `${anchor ? 'Remove' : 'Use'} ${row.querySelector('.node-label').textContent} ${anchor ? 'from' : 'as'} fixed nodes`);
-      button.title = anchor ? 'Remove from fixed nodes' : 'Use as a fixed node';
+      button.title = button.getAttribute('aria-label');
       if (previousAnchor !== null && previousAnchor !== String(anchor) && draftPairMode === 'fixed' && selected) {
         const selecting = anchor;
         const motionClass = selecting ? 'fixed-node-selecting' : 'fixed-node-deselecting';

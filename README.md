@@ -54,6 +54,9 @@ The approved frontend upgrade is closed out; long-term full-matrix capacity
 acceptance was explicitly waived by the user, not measured as passing. The
 actual local one-hour gate and finite production observation passed. See the
 [closeout and requirement/evidence index](docs/FRONTEND_UPGRADE_CLOSEOUT.md).
+The 2026-10-01 [visual follow-up](docs/FRONTEND_UI_SURFACES_REPORT.md) unifies
+Results/Canvas/PNG surfaces and introduces compact Fixed pins without a
+runtime restart or new observation window.
 
 On either matrix Canvas entry, click a plot or press Enter/Space to inspect
 up to 120 interval rows. The modal reuses the chart's frozen series, closes

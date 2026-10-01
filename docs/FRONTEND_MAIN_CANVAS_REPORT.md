@@ -1,5 +1,11 @@
 # Shared Canvas main-page acceptance
 
+2026-10-01 visual follow-up: the shared global palette/surface hierarchy and
+compact Fixed pin are now deployed frontend-only. Current artifact and UI
+regression evidence are in the [surface report](FRONTEND_UI_SURFACES_REPORT.md).
+The frozen fingerprints and one-hour acceptance below belong to the actual
+2026-09-30 release; they are not re-labelled as a soak of the new visual bytes.
+
 Updated 2026-09-30. Production main HTML now defaults to shared Canvas,
 rather than redirecting to trial HTML; `/?renderer=png` is explicit fallback.
 The fresh actual main-default 60-minute run passed the original G4 numerical

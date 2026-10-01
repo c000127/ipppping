@@ -2,6 +2,7 @@
 
 // DOM-only components; query/measurement state remains owned by app.js.
 const UIComponents = (() => {
+  const fixedNodeIcon = () => '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M5 2h6l-1 5 2 2v1H4V9l2-2-1-5Z M8 10v4"/></svg>';
   const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   function flash(element) {
     element._feedback?.cancel();
@@ -116,5 +117,5 @@ const UIComponents = (() => {
     apply();
     return { closeMobile: () => { if (media.matches) setOpen(false); } };
   }
-  return { reducedMotion, flash, updateStats, cardIndex, sidebarController };
+  return { fixedNodeIcon, reducedMotion, flash, updateStats, cardIndex, sidebarController };
 })();

@@ -1,6 +1,6 @@
 # Frontend visual invariants
 
-Updated 2026-09-30. These are acceptance rules for both the production page
+Updated 2026-10-01. These are acceptance rules for both the production page
 and the opt-in matrix trial, not optional styling suggestions. When changing
 `web/styles.css`, `web/chart-matrix-trial.css`, the metric markup, or chart
 rendering, update the corresponding Chrome assertions before release.
@@ -21,6 +21,46 @@ Chrome evidence. A capacity waiver does not relax visual or accessibility rules.
   layout, retain the vertical Current/support divider.
 - Canvas horizontal gridlines and CSS separators use the same low-contrast
   `--trial-rule` token. Do not restore visible vertical chart gridlines.
+
+## Global neutral surfaces, independent of renderer
+
+Shared tokens and controls belong to `styles.css`, not the lazy Canvas
+stylesheet. Results, Canvas, manual PNG and the matrix trial use the same
+background/text/badge colors and radii, including before first submission
+and after returning from Canvas. Canvas CSS may define drawing/motion tokens,
+but must not redefine the shared page palette or repaint the shell.
+
+| Role | Token / color | Emphasis |
+| --- | --- | --- |
+| Workspace | `--bg: #0a0a0a` | Lowest, makes independent modules visible |
+| Sidebar / legend | `--bg-panel: #111111` | Navigation, below data/actions |
+| Header | `--bg-header: #161616` | Stable page identity |
+| Metric cards | `--bg-card: #181818` | Primary data against the workspace |
+| Sidebar actions | `--bg-actions: #1e1e1e` | Distinct from the node list |
+| Controls / selected controls | `--bg-control: #292929` / `--bg-selected: #3b3b3b` | Interactive hierarchy, not a white fill |
+| Drawing surface | `--bg-plot: #0d0d0d` | Recedes below metrics; chart marks carry data emphasis |
+
+Separate modules by these restrained luminance steps and spacing, not new
+permanent borders, gradients or shadows. `--trial-rule` and `--trial-plot`
+alias the shared separator/plot tokens. Preserve all existing structural
+separators and metric layouts; layout proportions are not changed by theming.
+
+## Compact Fixed node control and long labels
+
+Node names occupy one line; protocol badges occupy a separate metadata row.
+The compact pin has a reserved column in All pairs and Fixed modes alike, so
+showing/hiding/fixing a node never narrows the label or changes row height.
+Labels use ellipsis only when genuinely too long, retaining the full DOM text,
+native hover title and accessible checkbox label. Do not resize the font or
+turn a long node name into two lines to make room for `Fix` / `Fixed` text.
+
+The pin is a local decorative SVG, not an icon-font dependency. Keep at least
+32×32 CSS px desktop / 40×40 mobile hit areas, full-name action tooltip and
+`aria-label`, `aria-pressed`, Space/Enter interaction and focus-visible outline.
+An unselected node cannot be fixed. Selected pins use the purple state fill
+and filled icon; the footer still reports the number of fixed nodes. Keep
+one shared 160 ms / 2 px entrance/exit feedback without bounce and disable it
+under reduced-motion. Do not restore node checkboxes visually.
 
 ## Five metrics in one row
 
@@ -154,3 +194,9 @@ centering, and the 2×2 divider at representative container widths. Review
 desktop and 390px chart screenshots; run the production smoke test only after
 authorized deployment. Automatic checks complement, but do not replace,
 visual and keyboard inspection.
+Also run `tests/ui-surfaces-browser.cjs`: it compares shared tokens/computed
+colors across Results→Charts→Results for all three entries, checks distinct
+module surfaces, and verifies long-label/pin geometry, title, keyboard and
+reduced motion at desktop/mobile widths. Its default transport is local;
+`UI_PUBLIC_PASS=1` explicitly enables the two-node public check (no inventory
+mocking there), only after an authorized frontend deployment.

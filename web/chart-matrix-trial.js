@@ -123,9 +123,9 @@ const ChartMatrixTrial = (() => {
       row.classList.toggle('anchor-on', isFixed);
       row.querySelector('.node-cb').checked = on;
       button.disabled = !on;
-      button.textContent = isFixed ? 'Fixed' : 'Fix';
       button.setAttribute('aria-pressed', String(isFixed));
       button.setAttribute('aria-label', (isFixed ? 'Remove ' : 'Use ') + label(id) + (isFixed ? ' from fixed nodes' : ' as a fixed node'));
+      button.title = button.getAttribute('aria-label');
       if (previous !== null && previous !== String(isFixed) && on && pairMode === 'fixed' && !UIComponents.reducedMotion()) {
         const motion = isFixed ? 'fixed-node-selecting' : 'fixed-node-deselecting';
         button.classList.remove('fixed-node-selecting', 'fixed-node-deselecting');
@@ -184,6 +184,7 @@ const ChartMatrixTrial = (() => {
         const row = document.createElement('div'); row.className = 'node';
         row.dataset.nodeId = node.id;
         const pick = document.createElement('label'); pick.className = 'node-select';
+        pick.title = node.label;
         const box = document.createElement('input'); box.type = 'checkbox'; box.className = 'node-cb';
         box.dataset.id = node.id; box.setAttribute('aria-label', 'Select ' + node.label);
         const name = document.createElement('span'); name.className = 'node-label'; name.textContent = node.label;
@@ -194,7 +195,7 @@ const ChartMatrixTrial = (() => {
         }
         pick.append(box, name, badges);
         const anchor = document.createElement('button'); anchor.type = 'button'; anchor.className = 'node-anchor';
-        anchor.dataset.anchorNode = node.id; anchor.textContent = 'Fix';
+        anchor.dataset.anchorNode = node.id; anchor.innerHTML = UIComponents.fixedNodeIcon();
         row.append(pick, anchor); section.append(row);
       }
       container.append(section);

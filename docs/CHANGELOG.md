@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-10-01 — Unified page surfaces and compact Fixed pins
+
+- Moved the neutral palette, badge/selected-node styling and corners to the
+  shared stylesheet. Results/Canvas/manual PNG keep the same shell before
+  querying and after returning from lazily loaded Canvas CSS.
+- Distinct workspace, sidebar, header, data-card, action and control luminance;
+  darker plot separates metrics from drawing without persistent borders or
+  new decorative shadows. Existing separators and metric alignment retained.
+- Reserved compact pin column, separate protocol metadata row and single-line
+  ellipsis/full-name tooltip prevent long names wrapping when Fixed appears.
+  Local SVG, 32px desktop/40px mobile targets, aria-pressed, keyboard/focus and
+  shared short reduced-motion-aware feedback; no icon/font dependency.
+- 89 Python/28 Node tests and Chrome main, matrix (axe), compatibility and new
+  three-entry surface/Fixed regressions pass. Small real public checks verify
+  all 13 asset hashes, live Results/Canvas/PNG and no script errors.
+- Frontend-only installed at 04:27:36 UTC, API identity unchanged. Runtime,
+  renderer/data contract, nodes, probes, RRD/cache limits untouched; old assets
+  and rollback stages/backups retained. No new soak or observation claimed.
+  See the [release/acceptance report](FRONTEND_UI_SURFACES_REPORT.md).
+
 ## 2026-09-30 — Approved frontend scope closed out; explicit build safeguards
 
 - User explicitly waived long-term full-matrix capacity acceptance. Record

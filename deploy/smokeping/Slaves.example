@@ -1,7 +1,8 @@
 *** Slaves ***
 
-# Store the real value in this file only on the host. Keep its mode at 0600.
-secret = CHANGE_ME_IN_PRIVATE_CONFIG
+# Create a private 0600 file containing one alias:secret per slave.
+# It is not included in the public repository.
+secrets = /config/smokeping_secrets
 
 +probe_sg
 display_name=Example Probe SG

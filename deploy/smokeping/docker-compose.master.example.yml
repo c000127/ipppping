@@ -1,6 +1,6 @@
 services:
   smokeping:
-    image: lscr.io/linuxserver/smokeping:latest
+    image: ${SMOKEPING_IMAGE:?set a validated image digest}
     container_name: smokeping
     hostname: smoke-master
     environment:
@@ -10,6 +10,8 @@ services:
     volumes:
       - ./config:/config
       - /srv/smokeping/data:/data
+      # Install svc-apache-master.run as ./config/svc-apache/run (0755) first.
+      - ./config/svc-apache/run:/etc/s6-overlay/s6-rc.d/svc-apache/run:ro
     network_mode: host
     restart: unless-stopped
     cap_add:

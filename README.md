@@ -10,6 +10,14 @@ This repository is a sanitized maintenance reference for the deployed system.
 It intentionally contains no production IP addresses, SSH material, shared
 secrets, RRD databases, logs, or live node inventory.
 
+## 安装、迁移与恢复入口
+
+- 已部署实例迁移/重装：先读 [恢复手册](docs/RECOVERY.md)，不要直接重跑历史升级脚本。
+- 全新部署与依赖：[Deployment](docs/DEPLOYMENT.md)。
+- 日常检查与变更：[Operations](docs/OPERATIONS.md)。
+- 加密离机备份：`deploy/recovery/capture.py`；公库不包含恢复所需的私有配置。
+- 已验证范围与未完成项：[恢复准备记录](docs/RECOVERY_READINESS_REPORT.md)。
+
 ## Repository layout
 
 ```text

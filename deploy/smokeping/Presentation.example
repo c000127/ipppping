@@ -1,8 +1,16 @@
 *** Presentation ***
 
 template = /etc/smokeping/basepage.html
-htmltitle = SmokePing
-graphborders = no
-dyntitle = yes
-detail = 1
-graphs = no
+charset = utf-8
+
++ overview
+width = 600
+height = 50
+range = 3h
+
++ detail
+width = 600
+height = 200
+unison_tolerance = 2
+
+"Last 3 Hours" 3h

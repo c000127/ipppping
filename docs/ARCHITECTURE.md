@@ -5,6 +5,15 @@ waiver of long-term full-matrix capacity are indexed in the
 [upgrade closeout](FRONTEND_UPGRADE_CLOSEOUT.md). Waiver is not measured capacity;
 the documented request/worker/cache limits remain unchanged.
 
+## Recovery boundary
+
+The Git repository is not the deployed state. Private inventory, collector
+authentication/configuration, TLS, unit overrides, exact image identity,
+fingerprinted web assets and RRD history must be retained independently.
+See [RECOVERY.md](RECOVERY.md) for encrypted off-host capture and isolated
+restore. RRD XML exports are individually validated, not one atomic matrix
+snapshot; DNS/provider accounts and image layers remain separate dependencies.
+
 ## Components
 
 The deployed system has four logical layers:

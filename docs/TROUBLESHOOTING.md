@@ -32,6 +32,11 @@ unconfigured.
 
 ## Nodes do not load
 
+For reconstruction after host loss, use [RECOVERY.md](RECOVERY.md) first. An
+active service with built-in/example nodes is not proof that private inventory
+was recovered. The current default node file is `/opt/ipppping/config/nodes.json`;
+`nodes.local.json` applies only when explicitly selected in the environment.
+
 The API returns its validated node list from `IPPPING_NODES_CONFIG`. Check the
 service environment and JSON syntax:
 
@@ -63,6 +68,11 @@ source, malformed RRD, or `rrdtool` failure must be fixed at the data layer;
 retrying cannot create missing history.
 
 ## Retry button appears ineffective
+
+The following image-token check applies to explicit PNG mode. Default Canvas
+Charts use the bounded summary/series protocol: inspect those requests and
+their error response without expecting a hidden PNG fallback. Do not change
+sampling or delete historical data to fix a rendering error.
 
 The frontend keeps the card frame and changes the image request token so the
 browser does not reuse a failed cached image. Inspect the Network panel for a

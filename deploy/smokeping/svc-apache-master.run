@@ -1,0 +1,7 @@
+#!/usr/bin/with-contenv bash
+# Retain CGI uploads. Access restrictions live in Apache/Caddy configuration.
+if [[ -f /config/httpd.conf ]]; then
+    PORT=$(grep -e '^Listen' /config/httpd.conf | awk '{print $2}' | awk -F: '{print $NF}')
+fi
+exec s6-notifyoncheck -d -n 300 -w 1000 -c "nc -z localhost ${PORT:-80}" \
+    /usr/sbin/apachectl -D FOREGROUND

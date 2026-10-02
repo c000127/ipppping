@@ -1,4 +1,4 @@
-pppping.hachimihaqile.top {
+upload.example.invalid {
     tls /etc/caddy/cloudflare-origin.crt /etc/caddy/cloudflare-origin.key
 
     @slave_upload {
@@ -13,7 +13,7 @@ pppping.hachimihaqile.top {
     }
 }
 
-ipppping.hachimihaqile.top {
+monitor.example.invalid {
     tls /etc/caddy/cloudflare-origin.crt /etc/caddy/cloudflare-origin.key
     reverse_proxy 127.0.0.1:8082
 }

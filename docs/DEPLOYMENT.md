@@ -4,6 +4,12 @@ This documents the split deployment observed during the inventory: a
 containerized SmokePing collector, a separate Python API, and a reverse proxy.
 All hostnames, addresses, usernames, and secret values below are placeholders.
 
+For an existing installation, start with [RECOVERY.md](RECOVERY.md): the public
+repository does not contain live inventory, secrets or historical RRD data.
+`install-api.py` and `install-slave-runtime.py` upgrade existing installations;
+neither is a complete first-install/restore command. Preserve the deployed web
+artifacts and actual service environment when restoring.
+
 ## Prerequisites
 
 - Linux host with Python 3 and `rrdtool`.
@@ -47,9 +53,12 @@ The manual repository-based installation sequence is:
 conflicts=$(dpkg-query --show --showformat='${binary:Package}\n' \
   docker.io docker-compose docker-doc docker-buildx podman-docker containerd runc \
   2>/dev/null || true)
+printf '%s\n' "$conflicts"
 if [ -n "$conflicts" ]; then
-    sudo apt remove -y $conflicts
+    printf '%s\n' 'STOP: review existing container packages/workloads first.'
+    exit 1
 fi
+# Prefer the guarded helper above, which refuses existing/conflicting installs.
 
 sudo apt update
 sudo apt install -y ca-certificates curl
@@ -92,6 +101,9 @@ inventories, SSH keys, or RRD data into this repository.
 ## Install the API
 
 ```bash
+getent group ipppping >/dev/null || groupadd --system ipppping
+id ipppping >/dev/null 2>&1 || useradd --system --gid ipppping \
+  --home-dir /opt/ipppping --shell /usr/sbin/nologin ipppping
 install -d -o ipppping -g ipppping /opt/ipppping
 git clone https://github.com/c000127/ipppping.git /opt/ipppping
 cp /opt/ipppping/config/nodes.example.json /opt/ipppping/config/nodes.local.json
@@ -146,11 +158,22 @@ shared-secret file. The supplied examples show the important directives:
 - separate IPv4, IPv6, and external target namespaces;
 - 3-hour, 24-hour, and longer RRD consolidation tiers.
 
-Start and validate the collector:
+The examples are validated together by `tests/check-smokeping-examples.py`
+against an explicitly pinned local image, with no network access. They are
+sanitized syntax examples, not production inventory or a complete bootstrap.
+Create a private `smokeping_secrets` with one `alias:secret` line per slave and
+mode 0600. Install `svc-apache-master.run` as `config/svc-apache/run` mode 0755;
+preserve the upload-only Apache config/listener and Caddy access rules from the
+private deployment. The run script alone does not restrict HTTP access.
+The image's normal initialization installs `/defaults/tcpping` into
+`/usr/bin/tcpping`; skipping that init requires reproducing this prerequisite
+for isolated syntax checks (the test helper does so).
+
+Start and validate the collector only after completing those private settings:
 
 ```bash
 cd /srv/smokeping
-docker compose config
+docker compose config --quiet
 docker compose up -d
 docker compose ps
 docker compose logs --tail=50 smokeping
@@ -173,7 +196,7 @@ For each slave:
 ```bash
 mkdir -p /srv/smokeping-slave/config /srv/smokeping-slave/data
 cd /srv/smokeping-slave
-docker compose config
+docker compose config --quiet
 docker compose up -d
 docker compose logs --tail=50 smokeping-slave
 ss -H -lnt

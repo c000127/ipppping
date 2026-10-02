@@ -44,7 +44,7 @@ slaves = probe_sg
 menu = Example Probe SG (IPv6)
 title = Example Probe SG
 host = 2001:db8:1::11
-slaves = smoke_master_v6
+# Master probes this target; a master target is not a registered slave alias.
 
 + External
 menu = External Checks
@@ -54,7 +54,7 @@ title = External Network Checks
 menu = Example Carrier TCPPing
 title = Example Carrier TCPPing
 probe = TCPPing
-host = target.example.invalid
+host = 192.0.2.53
 port = 443
 slaves = probe_sg probe_jp
 

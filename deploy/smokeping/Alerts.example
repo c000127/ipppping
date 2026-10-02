@@ -1,4 +1,7 @@
 *** Alerts ***
 
+to = ops@example.invalid
+from = smokeping@example.invalid
+
 # Keep alert thresholds in private operations policy. This file is a shape
 # reference only and deliberately does not encode production recipients.

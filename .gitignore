@@ -36,3 +36,10 @@ _deploy*/
 *.swp
 ipppping-runtime.tar
 test-results/
+
+# Encrypted recovery material is still private; never publish inventories/backups.
+*.cms
+*.cms.partial
+recovery-backups/
+recovery-keys/
+restore-review*/

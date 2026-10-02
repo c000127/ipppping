@@ -31,6 +31,12 @@ scan.
 
 ## Runtime controls
 
+For backup key separation, private Windows ACLs, authenticated encryption and
+staging-only recovery, see [RECOVERY.md](RECOVERY.md). Encrypted archives still
+contain private deployment information and must not be committed. Verify a
+trusted off-host archive checksum as well as its encryption tag and member
+manifest; encryption to a public certificate alone is not a sender signature.
+
 - Bind the API to loopback and expose only the reverse proxy.
 - Use a dedicated service account with read-only access to RRD data.
 - Keep SmokePing secrets mode `0600` and outside the Git checkout.

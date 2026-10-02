@@ -1,8 +1,11 @@
 # Node Inventory Contract
 
 The production inventory is intentionally excluded. Keep the private copy at
-`config/nodes.local.json` and use `config/nodes.example.json` as the schema
-reference.
+`config/nodes.local.json` when explicitly configured, or the deployed default
+`/opt/ipppping/config/nodes.json`; use `config/nodes.example.json` as the schema
+reference. This source inventory is private even though the API exposes display
+fields. See [RECOVERY.md](RECOVERY.md) before rebuilding a deployment from CSV:
+retired rows must not be automatically re-enrolled.
 
 ## Application fields
 
@@ -16,7 +19,7 @@ reference.
 | `region` | Short display grouping | `SG` |
 
 IP addresses, DNS targets, SSH endpoints, and secrets do not belong in this
-public application file. They belong in private SmokePing configuration and,
+application display schema. They belong in private SmokePing configuration and,
 where needed, a private deployment inventory.
 
 ## Adding a node
@@ -56,9 +59,9 @@ node file.
 Use documentation-only ranges in local tests:
 
 ```csv
-alias,display_name,monitor_ipv4,monitor_ipv6,ssh_host,ssh_port
-probe_sg,Example Probe SG,203.0.113.10,2001:db8:1::10,203.0.113.10,22
-probe_jp,Example Probe JP,203.0.113.11,,203.0.113.11,2222
+alias,display_name,monitor_ipv4,monitor_ipv6,ssh_host,ssh_port,ssh_user
+probe_sg,Example Probe SG,203.0.113.10,2001:db8:1::10,203.0.113.10,22,root
+probe_jp,Example Probe JP,203.0.113.11,,203.0.113.11,2222,debian
 ```
 
 This file is an example only. Do not replace the placeholders with live values

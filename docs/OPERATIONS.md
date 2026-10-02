@@ -16,8 +16,8 @@ ss -lntp | grep -E ':(80|443|8080|8082)\b'
 Inspect RRD freshness without copying the data into Git:
 
 ```bash
-find /srv/smokeping/data -type f -name '*.rrd' -mmin -10 | head
-rrdtool info /srv/smokeping/data/ICMPv4/example-target.rrd
+find /home/smokeping/data -type f -name '*.rrd' -mmin -10 | head
+rrdtool info /home/smokeping/data/ICMPv4/example-target.rrd
 ```
 
 The schema used by the current API expects `median` and `loss` data sources.
@@ -52,7 +52,9 @@ SmokePing target changes require a coordinated rollout:
 
 1. Edit the private inventory or target source.
 2. Generate and validate `Targets` and `Slaves`.
-3. Restart the master collector and inspect its logs.
+3. Validate the configuration, update the included configuration version as
+   described in LIGHTWEIGHT.md, gracefully reload the upload CGI and signal
+   the foreground collector through s6. Do not blindly restart the whole stack.
 4. Synchronize the changed master/slave relationship to every affected slave.
 5. Wait for fresh samples and confirm RRD files are updated.
 6. Update the private API node file if IDs or capabilities changed.
@@ -62,23 +64,19 @@ Do not rename an ID casually. The ID is part of the RRD lookup contract.
 
 For foreground slave PID handling, config-version propagation, bounded API
 resources, upload-only legacy access, and end-to-end freshness monitoring, see
-[LIGHTWEIGHT.md](LIGHTWEIGHT.md). Compose commands on updated slaves must include
-the private `ipppping.override.yml`; do not recreate using the base file alone.
+[LIGHTWEIGHT.md](LIGHTWEIGHT.md). Preserve each slave's actual Compose file
+sequence. Include its private `ipppping.override.yml` when present/in use;
+some newer deployments contain the complete configuration in the base file.
 
 ## Backup and recovery
 
-Back up these classes separately:
-
-- SmokePing config and generated target files;
-- shared secret and TLS credentials, stored encrypted and access-controlled;
-- API private node inventory and systemd/reverse-proxy config;
-- RRD data, using filesystem snapshots or a backup tool that preserves file
-  ownership and timestamps.
-
-Never make secrets part of the application archive. To recover, restore the
-collector config and RRD tree first, then install the API and point
-`IPPPING_DATA_DIR` at the restored export. Validate with `rrdtool info` and the
-health/API checks before re-enabling public traffic.
+Use the [migration and recovery runbook](RECOVERY.md) and
+`deploy/recovery/capture.py`. Recovery bundles contain credentials and must be
+authenticated-encrypted and kept outside Git. Public release archives must
+never include secrets. The collector exports and round-trip verifies each RRD
+as XML; this is not a globally atomic snapshot. Test decryption and file hashes
+off-host before calling a backup usable. A successful backup does not certify a
+fresh-host restore, registry availability, or DNS/provider-account recovery.
 
 ## Reboot recovery check
 

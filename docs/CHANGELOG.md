@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-10-02 — Migration/reinstallation and private recovery preparation
+
+- Added a Chinese recovery runbook, deployment-state map, encryption/key custody,
+  staging-only restoration, cutover/rollback and explicit incomplete gates.
+- Added SSH-streamed authenticated-encrypted capture, integrity verification,
+  safe staged extraction and new-directory RRD restoration tools. No restart,
+  production overwrite, backup deletion schedule or server-side SSH key copying.
+- Captured/verified the master (797 round-trip checked RRD exports) and 14/15
+  configured slaves off-host. One unreachable slave remains an explicit gap;
+  master-side history/config is retained. See [the readiness record](RECOVERY_READINESS_REPORT.md).
+- Repaired and isolated-container-tested sanitized SmokePing examples, required
+  deliberate image pinning and corrected deployment/recovery documentation.
+  Docker image layers, provider accounts, full fresh-host/public cutover and
+  independent offline custody remain separate work, not assumed passing.
+
 ## 2026-10-01 — Tamago IPv6 address synchronization
 
 - Updated only the private IPv6 target and two address inventories, with retained

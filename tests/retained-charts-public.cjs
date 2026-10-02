@@ -20,7 +20,17 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
   const browser = await chromium.launch({ headless: true, channel: 'chrome' });
   const errors = [], series = [], summaries = [], assets = [], checks = [], legacy = [];
   try {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 720 } });
+    const page = await browser.newPage({ viewport: { width: 1800, height: 1100 } });
+    const nearReady = () => page.waitForFunction(() => {
+      const bounds = document.getElementById('mainArea').getBoundingClientRect();
+      return MainCanvas.pendingCount === 0 && [...document.querySelectorAll('.card')].every(card => {
+        const r = card.getBoundingClientRect();
+        if (r.bottom < bounds.top - 300 || r.top > bounds.bottom + 300) return true;
+        const img = card.querySelector('.trial-preview');
+        return card.querySelector('canvas') || img?.complete && img.naturalWidth > 300 &&
+          getComputedStyle(img).opacity === '1' && getComputedStyle(img).visibility === 'visible';
+      });
+    }, null, { timeout: 30000 });
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => {
       const url = new URL(request.url());
@@ -66,6 +76,16 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
     await page.locator('#goBtn').click();
     await page.waitForFunction(() => MainCanvas.instanceCount > 0 && MainCanvas.pendingCount === 0);
     assert.ok(await page.locator('.card').count() <= 12);
+    assert.equal(await page.locator('#graphGrid').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length), 2);
+    await page.waitForFunction(() => {
+      const bounds = document.getElementById('mainArea').getBoundingClientRect();
+      const plots = [...document.querySelectorAll('.trial-plot')].filter(plot => {
+        const rect = plot.getBoundingClientRect(); return rect.bottom > bounds.top && rect.top < bounds.bottom;
+      });
+      return plots.length > 4 && plots.every(plot => plot.querySelector('canvas') ||
+        plot.querySelector('img')?.complete && plot.querySelector('img').naturalWidth > 300);
+    }, null, { timeout: 30000 });
+    await nearReady();
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const first = await page.locator('.card canvas').first().evaluate(canvas => ({
       index: canvas.closest('.card').dataset.index, png: canvas.toDataURL('image/png')
@@ -74,12 +94,12 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
     const preview = page.locator(`.card[data-index="${first.index}"] .trial-preview`);
     await preview.waitFor({ state: 'attached' });
     assert.equal(await preview.getAttribute('src') === first.png, true, 'offscreen chart retains identical pixels');
-    await page.waitForFunction(() => MainCanvas.pendingCount === 0);
+    await nearReady();
     const retained = await page.evaluate(() => ({ count: MainCanvas.previewCount, bytes: MainCanvas.previewBytes }));
     const requestsBeforeReturn = series.length;
     await page.locator('#mainArea').evaluate(main => { main.scrollTop = 0; });
     await page.locator(`.card[data-index="${first.index}"] canvas`).waitFor();
-    await page.waitForFunction(() => MainCanvas.pendingCount === 0);
+    await nearReady();
     assert.equal(series.length, requestsBeforeReturn, 'returning to cached charts adds no series request');
     assert.ok(await page.evaluate(() => MainCanvas.instanceCount + MainCanvas.pooledCount <= 4));
     assert.ok(summaries.length <= 3 && series.length <= 12);
@@ -87,11 +107,15 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
     assert.deepEqual(errors, []);
     await Promise.all(checks);
     assert.ok(assets.some(name => name.startsWith('matrix-renderer.')));
-    const report = { passed: true, checkedAt: new Date().toISOString(), routes: await page.locator('.card').count(),
+    const report = { passed: true, twoColumnsMoreThanFourVisible: true, checkedAt: new Date().toISOString(), routes: await page.locator('.card').count(),
       seriesRequests: series.length, summaryRequests: summaries.length, loadedAssets: assets,
       exactPreviewPixels: true, noReturnRefetch: true, retained, errors };
+    report.previewComputedVisibility = await page.locator('.trial-preview').evaluateAll(images =>
+      images.every(img => getComputedStyle(img).opacity === '1' && getComputedStyle(img).visibility === 'visible'));
+    assert.equal(report.previewComputedVisibility, true);
     fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'test-results/retained-charts-public.json'), JSON.stringify(report, null, 2));
+    await page.screenshot({ path: path.join(root, 'test-results/chart-recovery-public.png') });
+    fs.writeFileSync(path.join(root, 'test-results/chart-recovery-public.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -2,7 +2,7 @@
 
 // Shared bounded Canvas host. Query selection and submission belong to the caller.
 const MatrixRenderer = (() => {
- function create({ nodes: getNodes, json, controls = false, main = document.getElementById('mainArea'),
+ function create({ nodes: getNodes, json, controls = false, rebuild, main = document.getElementById('mainArea'),
    grid = document.getElementById('graphGrid') }) {
   const $ = id => document.getElementById(id);
   const MAX_ACTIVE = 4, MAX_CACHE_COUNT = 16, MAX_CACHE_BYTES = 2 * 1024 * 1024;
@@ -26,6 +26,8 @@ const MatrixRenderer = (() => {
   // Retain the rendered picture, not a live Canvas, when a route leaves view.
   // Scoped to one frozen matrix; never used as data for a different query/axis.
   const previews = new Map();
+  const failures = new Map();
+  const emptyPlots = new Set();
   let previewBytes = 0;
   let seriesCache = new Map(), cacheBytes = 0, chartGridColor = null;
   let queryLoading = false, appliedMode = 'charts', unified = false, visibleMax = 1;
@@ -148,7 +150,7 @@ const MatrixRenderer = (() => {
     const image = new Image(chart.width, chart.height);
     image.className = 'trial-preview'; image.alt = ''; image.draggable = false;
     image.setAttribute('aria-hidden', 'true');
-    image.loading = 'lazy'; image.decoding = 'async'; image.src = src;
+    image.decoding = 'sync'; image.src = src;
     previewBytes -= previews.get(index)?.bytes || 0;
     const bytes = src.length * 2;
     previews.set(index, { image, bytes }); previewBytes += bytes;
@@ -185,7 +187,7 @@ const MatrixRenderer = (() => {
         !Number.isInteger(count) || count > 120 ||
         fields.some(key => !Array.isArray(columns[key]) || columns[key].length !== count) ||
         data.window?.start !== matrix.end - matrix.dur || data.window?.end !== matrix.end) {
-      throw new Error('Series changed or invalid; rebuild the matrix to preserve the frozen axis');
+      throw Object.assign(new Error('Data changed or could not be verified. Reload the matrix to refresh all summaries and axes.'), { rebuild: true });
     }
     let previous = -Infinity;
     for (let i = 0; i < count; i++) {
@@ -212,7 +214,7 @@ const MatrixRenderer = (() => {
       }
       if (['max_median_ms', 'median_mean_ms'].some(key => Number.isFinite(columns[key][i]) &&
           columns[key][i] > expected.summary.max_median_ms + 1e-6)) {
-        throw new Error('Series exceeds the frozen unified axis; rebuild the matrix');
+        throw Object.assign(new Error('Data exceeds the frozen axis. Reload the matrix.'), { rebuild: true });
       }
       previous = columns.end[i];
     }
@@ -226,9 +228,17 @@ const MatrixRenderer = (() => {
   function draw(index, data) {
     if (!wanted.has(index) || document.hidden || active.has(index) || appliedMode !== 'charts' || !cards[index]) return;
     const plot = cards[index].querySelector('.trial-plot'), width = plotWidth(plot);
-    if (width < 200) { plot.textContent = 'Zoom exceeds the pixel budget; inspect the summary or reduce zoom.'; return; }
+    plot.classList.remove('problem');
+    plot.setAttribute('role', 'button'); plot.tabIndex = 0;
+    if (width < 200) {
+      plot.textContent = 'Zoom exceeds the pixel budget; inspect the summary or reduce zoom.';
+      emptyPlots.add(index); scheduleVisible(); return;
+    }
     const item = matrix.items[index], c = data.columns;
-    if (!c.end.length) { plot.textContent = 'No consolidated intervals in this window.'; return; }
+    if (!c.end.length) {
+      plot.textContent = 'No consolidated intervals in this window.';
+      emptyPlots.add(index); scheduleVisible(); return;
+    }
     const theme = getComputedStyle(document.body);
     const color = name => theme.getPropertyValue(name).trim();
     const markColor = color('--trial-loss-mark');
@@ -313,6 +323,14 @@ const MatrixRenderer = (() => {
     chart.root.setAttribute('aria-hidden', 'true');
     active.set(index, chart);
     revealPlot(chart, index);
+    // Finish each near-viewport picture before assigning the four reusable
+    // Canvases to the next routes. A tall/two-column viewport can show >4 plots.
+    const token = generation;
+    requestAnimationFrame(() => {
+      if (token !== generation || active.get(index) !== chart) return;
+      rememberPreview(index, chart);
+      scheduleVisible();
+    });
   }
   async function requestSeries(index) {
     const available = cached(index);
@@ -343,17 +361,31 @@ const MatrixRenderer = (() => {
     return local.result;
   }
   async function loadVisible(index) {
-    if (active.has(index) || pending.has(index) || matrix?.items[index].error || !matrix) return;
-    const token = generation, plot = cards[index].querySelector('.trial-plot');
+    if (active.has(index) || pending.has(index) || failures.has(index) || emptyPlots.has(index) || matrix?.items[index].error || !matrix) return;
+    const token = generation;
     try {
       const data = await requestSeries(index);
       if (token === generation && wanted.has(index)) draw(index, data);
     } catch (error) {
       if (token === generation && wanted.has(index) && error.name !== 'AbortError') {
-        plot.textContent = error.message + '. No automatic PNG fallback.';
-        plot.classList.add('problem');
+        failures.set(index, error);
+        showFailure(index, error);
+        scheduleVisible();
       }
     }
+  }
+  function showFailure(index, error) {
+    const plot = cards[index]?.querySelector('.trial-plot');
+    if (!plot) return;
+    const message = document.createElement('span'); message.textContent = error.message;
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'retry-btn';
+    button.dataset.seriesRetry = String(index);
+    button.textContent = error.rebuild ? 'Reload matrix' : 'Retry chart';
+    plot.classList.add('problem');
+    plot.setAttribute('role', 'group'); plot.tabIndex = -1;
+    plot.removeAttribute('aria-disabled');
+    plot.replaceChildren(message, button);
   }
   function closeIntervalData() {
     if ($('intervalDialog').open) $('intervalDialog').close();
@@ -363,7 +395,7 @@ const MatrixRenderer = (() => {
   }
   async function showIntervalData(plot) {
     const index = Number(plot.closest('.card').dataset.index), token = generation;
-    if (!matrix || queryLoading || items[index]?.error || $('intervalDialog').open) return;
+    if (!matrix || queryLoading || failures.has(index) || items[index]?.error || $('intervalDialog').open) return;
     detailsIndex = index; detailsTrigger = plot;
     const pair = pairs[index];
     $('intervalTitle').textContent = (pair.srcLabel || label(pair.source)) + ' → ' +
@@ -411,10 +443,10 @@ const MatrixRenderer = (() => {
       if (!matrix || document.hidden) return;
       const viewport = main.getBoundingClientRect();
       const center = (viewport.top + viewport.bottom) / 2;
-      const ranked = [...near].filter(index => !matrix.items[index].error).map(index => {
+      const ranked = [...near].filter(index => !matrix.items[index].error && !failures.has(index)).map(index => {
         const rect = cards[index].getBoundingClientRect();
-        return { index, distance: Math.abs((rect.top + rect.bottom) / 2 - center) };
-      }).sort((a, b) => a.distance - b.distance);
+        return { index, missing: !previews.has(index) && !emptyPlots.has(index), distance: Math.abs((rect.top + rect.bottom) / 2 - center) };
+      }).sort((a, b) => Number(b.missing) - Number(a.missing) || a.distance - b.distance);
       const indexes = ranked.map(value => value.index);
       if (detailsIndex !== null) indexes.unshift(detailsIndex);
       wanted = new Set([...new Set(indexes)].slice(0, MAX_ACTIVE));
@@ -436,7 +468,7 @@ const MatrixRenderer = (() => {
     cards.forEach(card => { if (card) observer.observe(card); });
   }
   if (!$('intervalDialog')) document.body.insertAdjacentHTML('beforeend', "<dialog class=\"trial-data-dialog\" id=\"intervalDialog\" aria-labelledby=\"intervalTitle\" aria-describedby=\"intervalExplanation\">\n  <header class=\"trial-data-head\">\n    <h2 id=\"intervalTitle\">Interval data</h2>\n    <button type=\"button\" id=\"closeIntervalData\" autofocus aria-label=\"Close interval data\">Close</button>\n  </header>\n  <p id=\"intervalExplanation\">Each row aggregates measured buckets. A peak is somewhere within its interval; missing latency is not zero latency.</p>\n  <p id=\"intervalStatus\" role=\"status\"></p>\n  <div id=\"intervalTable\" class=\"trial-data-scroll\" tabindex=\"0\" role=\"region\" aria-label=\"Interval measurements\"></div>\n</dialog>");
-  function suspend(keepCharts = true) {
+  function suspend(keepCharts = true, keepPreviews = false) {
     queryLoading = true; generation++;
     closeIntervalData(); stopMotion();
     for (const [index, job] of pending) {
@@ -444,10 +476,12 @@ const MatrixRenderer = (() => {
       cards[index]?.querySelector('.trial-plot')?.removeAttribute('aria-busy');
     }
     pending.clear();
-    for (const index of [...active.keys()]) dispose(index, keepCharts);
+    for (const index of [...active.keys()]) dispose(index, keepCharts, keepPreviews);
     if (!keepCharts) destroyIdle();
-    cards.forEach(card => card?.querySelector('.trial-preview')?.remove());
-    clearPreviews();
+    if (!keepPreviews) {
+      cards.forEach(card => card?.querySelector('.trial-preview')?.remove());
+      clearPreviews();
+    }
     observer?.disconnect(); near.clear(); wanted.clear();
     cancelAnimationFrame(frame); frame = 0;
   }
@@ -464,13 +498,24 @@ const MatrixRenderer = (() => {
   function reset(keepCharts = false) {
     suspend(keepCharts);
     seriesCache.clear(); cacheBytes = 0; revealedRoutes.clear();
+    failures.clear();
+    emptyPlots.clear();
     matrix = null; pairs = []; items = []; cards = [];
   }
   function mount(snapshot, nextCards, options = {}) {
     if (snapshot !== matrix) reset(true);
-    else suspend(true);
+    else suspend(true, unified === !!options.unified);
     matrix = snapshot; pairs = snapshot.pairs; items = snapshot.items; cards = nextCards;
+    emptyPlots.clear();
     unified = !!options.unified;
+    cards.forEach((card, index) => {
+      if (previews.has(index)) card?.querySelector('.trial-plot')?.replaceChildren(previews.get(index).image);
+      if (failures.has(index)) showFailure(index, failures.get(index));
+      if (items[index]?.error) {
+        const error = Object.assign(new Error('No chart: ' + items[index].error), { rebuild: true });
+        failures.set(index, error); showFailure(index, error);
+      }
+    });
     // One frozen range from the full legal selection; viewport/filter cannot redefine it.
     visibleMax = Math.max(1, ...items.map(item => item.summary?.max_median_ms || 0)) * 1.1;
     queryLoading = false; observe();
@@ -486,6 +531,16 @@ const MatrixRenderer = (() => {
     scheduleVisible();
   }
   grid.addEventListener('click', event => {
+    const retry = event.target.closest('[data-series-retry]');
+    if (retry) {
+      const index = Number(retry.dataset.seriesRetry), error = failures.get(index);
+      if (queryLoading || !error) return;
+      if (error.rebuild) { rebuild?.(); return; }
+      failures.delete(index);
+      const plot = cards[index].querySelector('.trial-plot');
+      plot.classList.remove('problem'); plot.replaceChildren();
+      scheduleVisible(); return;
+    }
     const plot = event.target.closest('.trial-plot');
     if (plot) showIntervalData(plot);
   });
@@ -511,8 +566,9 @@ const MatrixRenderer = (() => {
   });
   main.addEventListener('scroll', scheduleVisible, { passive: true });
   const resize = new ResizeObserver(() => {
-    if (queryLoading || !matrix || !active.size) return;
-    for (const index of [...active.keys()]) dispose(index);
+    if (queryLoading || !matrix) return;
+    emptyPlots.clear();
+    for (const index of [...active.keys()]) dispose(index, true, true);
     scheduleVisible();
   });
   resize.observe(main);

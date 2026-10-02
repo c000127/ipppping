@@ -146,9 +146,22 @@ This is a client-side preview, not `/api/graph.png` fallback. First-time loading
 remains lazy, with four live charts and two concurrent series requests. Preview
 storage is additional to the 16-entry series cache and is limited by the current
 query's route count (at most 500); expose its count/encoded bytes in diagnostics.
-Clear previews when changing query/filter/axis or leaving/hiding Charts so an
-old picture cannot masquerade as the new selection. This memory trade-off is
+Clear previews when changing query/axis or leaving/hiding Charts so an
+old picture cannot masquerade as the new selection. Keep same-snapshot pictures
+across filter/layout changes and resize. Four live Canvas instances are a work
+budget, not a limit of four displayed charts: progressively fill every nearby
+plot, preserving completed pictures while recycling the instances. Preview CSS
+must explicitly set opacity to 1 (legacy `.card-img img` defaults to 0).
+Browser tests must assert computed visibility, not merely image attachment or
+successful decoding; review a real two-column screenshot with >4 visible plots.
+This memory trade-off is
 not covered by the historical one-hour acceptance report.
+Series/summary disagreement can be caused by late RRD consolidation inside the
+same fixed window. Never bypass equality/range checks or automatically fall back
+to PNG. Offer Reload matrix using the **applied** selection/Fixed nodes/duration,
+preserving uncommitted controls. Transport failures offer Retry chart; scrolling
+must not retry failed routes indefinitely. Error actions must be keyboard usable
+without nesting a button inside another button role.
 After a WAAPI effect completes, remove its cleanup listeners and cancel the
 finished effect so a detached reveal cover cannot keep a forwards-filled
 animation alive. Its final visual state must already match normal CSS.

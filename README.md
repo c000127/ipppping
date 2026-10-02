@@ -62,6 +62,9 @@ Loaded Charts now retain a local lossless preview outside the viewport while
 recycling their live Canvas. First loading remains on-demand; see the
 [retained-chart release record](docs/FRONTEND_RETAINED_CHARTS_REPORT.md) for the
 current build, tests and additional preview-memory trade-off.
+The subsequent [Charts recovery fix](docs/FRONTEND_CHART_RECOVERY_REPORT.md)
+corrects invisible previews, fills all nearby plots in two-column layouts, and
+adds explicit retry/rebuild actions without applying unsubmitted controls.
 
 The approved frontend upgrade is closed out; long-term full-matrix capacity
 acceptance was explicitly waived by the user, not measured as passing. The

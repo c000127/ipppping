@@ -25,6 +25,7 @@ let lastRoutes = [];
 let partialMissing = false;
 let statsEpoch = 0, statsDelayMs = 0, summaryDelayMs = 0, seriesDelayMs = 0, failNextStats = false;
 let failSeries = false;
+let changedSeries = false;
 let failNextSummary = false;
 let summaryBusyCount = 0;
 let v2Epoch = 0;
@@ -143,6 +144,7 @@ const server = http.createServer((req, res) => {
       const pair = { source: url.searchParams.get('source'), target: url.searchParams.get('target'), type: url.searchParams.get('type') };
       const index = routes.findIndex(value => value.source === pair.source && value.target === pair.target && value.type === pair.type);
       const data = summary(pair, end, dur, index + 10);
+      if (changedSeries) data.summary.average_ms = (data.summary.average_ms || 0) + 1;
       const start = end - dur;
       data.encoding = 'columns-v1';
       if (pair.source === 'v0' && pair.target === 'ext' && pair.type === 'v4') {
@@ -216,6 +218,8 @@ if (process.env.MATRIX_FIXTURE_ONLY === '1') {
       if ('summaryDelayMs' in settings) summaryDelayMs = settings.summaryDelayMs;
       if ('seriesDelayMs' in settings) seriesDelayMs = settings.seriesDelayMs;
       if ('partialMissing' in settings) partialMissing = settings.partialMissing;
+      if ('failSeries' in settings) failSeries = settings.failSeries;
+      if ('changedSeries' in settings) changedSeries = settings.changedSeries;
       if ('failNextSummary' in settings) failNextSummary = settings.failNextSummary;
       if ('failSeries' in settings) failSeries = settings.failSeries;
       if ('summaryBusyCount' in settings) summaryBusyCount = settings.summaryBusyCount;

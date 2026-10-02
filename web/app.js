@@ -35,15 +35,21 @@ function canvasStatus(message) {
   if (status) { status.hidden = !message; status.textContent = message; }
 }
 
-async function loadCanvasQuery(sel, anchors, expectedPairs, generation, signal) {
+async function loadCanvasQuery(sel, anchors, expectedPairs, generation, signal, options = {}) {
   canvasLoading = true;
-  const dur = Number(draftDuration), pairing = draftPairMode;
+  const dur = options.dur ?? Number(draftDuration), pairing = options.pairing ?? draftPairMode;
   ensureMainShell(); canvasRenderer?.pause();
   canvasStatus('Building frozen summary… Previous results remain until the query completes.');
   try {
     await loadCanvasDependencies();
     if (signal.aborted || generation !== renderGeneration) return;
-    if (!canvasRenderer) canvasRenderer = MatrixRenderer.create({ nodes: () => nodes, json: fetchJson, controls: true });
+    if (!canvasRenderer) canvasRenderer = MatrixRenderer.create({ nodes: () => nodes, json: fetchJson, controls: true,
+      rebuild: () => {
+        if (canvasLoading || !canvasSnapshot) return;
+        activeController?.abort(); activeController = new AbortController();
+        return loadCanvasQuery(appliedSelection.slice(), appliedAnchors.slice(), currentPairs.slice(),
+          ++renderGeneration, activeController.signal, { dur: Number(selectedDuration), pairing: appliedPairMode });
+      } });
     const loaded = await MatrixData.load(sel, anchors, dur, null, fetchJson, signal,
       (done, total) => { if (generation === renderGeneration) canvasStatus(`Summaries ${done}/${total}; charts wait for the complete frozen range.`); });
     if (signal.aborted || generation !== renderGeneration) return;
@@ -1391,7 +1397,7 @@ function hydrateCard(card, pair, charts, generation, signal) {
 
 function renderGrid({ animate = true, animateLayout = animate, preserveRequest = false, hydrate = true, loadCharts = false, filterChange = false, selectionChange = false, metricPulse = null } = {}) {
   const grid = ensureMainShell();
-  if (canvasCharts()) canvasRenderer?.suspend(true);
+  if (canvasCharts()) canvasRenderer?.pause();
   let generation = renderGeneration;
   let signal = activeController?.signal;
   if (!preserveRequest) {

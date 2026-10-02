@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-10-03 — Main Charts visibility and recovery
+
+- Explicitly show retained previews despite legacy PNG image opacity rules.
+  Progressively fill all near-viewport plots, including >4 visible charts in
+  two columns, using four recycled Canvas instances and two series requests.
+  Preserve same-snapshot pictures on layout/filter/resize changes.
+- Keep strict frozen-summary/series validation. Late consolidated buckets can
+  change the summary: offer Reload matrix for the applied query without changing
+  pending controls, and Retry chart for transport errors. Stop scroll-triggered
+  automatic retries of failed routes; do not fall back to PNG.
+- Add local Chrome fault/rebuild/draft-preservation and computed-visibility
+  regressions. See [release evidence](FRONTEND_CHART_RECOVERY_REPORT.md), including
+  the visual-QA failure that exposed the opacity issue.
+
 ## 2026-10-02 — Retain Charts pictures outside the viewport
 
 - Retain lossless locally encoded chart previews when recycling offscreen Canvas

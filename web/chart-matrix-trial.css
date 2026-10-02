@@ -150,9 +150,11 @@
 }
 .matrix-integrated-trial .trial-plot[aria-busy="true"]:empty::before { content: 'Loading visible series…'; }
 .matrix-integrated-trial .trial-plot.problem { color: var(--warning); padding: 60px 14px 0; }
+.matrix-integrated-trial .trial-plot.problem .retry-btn { display: block; margin: 12px auto 0; }
 .matrix-integrated-trial .trial-plot .uplot { margin-inline: auto; }
 .matrix-integrated-trial .trial-preview {
-  display: block;
+    display: block;
+    opacity: 1;
   max-width: 100%;
   height: 220px;
   margin-inline: auto;

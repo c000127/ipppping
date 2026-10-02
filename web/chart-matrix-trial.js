@@ -14,7 +14,7 @@ const ChartMatrixTrial = (() => {
   let renderedFilter = 'all';
   let appliedSelection = [], appliedFixed = [];
   let cards = [], queryLoading = false, lastMetrics = new Map();
-  const renderer = MatrixRenderer.create({ nodes: () => nodes, json });
+  const renderer = MatrixRenderer.create({ nodes: () => nodes, json, rebuild: () => submit(true) });
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[char]));
@@ -329,16 +329,19 @@ const ChartMatrixTrial = (() => {
       throw new Error('Results batch and pair list disagree');
     return { pairs: routeList, items: batch.items };
   }
-  async function submit() {
-    if ($('goBtn').disabled) return;
+  async function submit(rebuild = false) {
+    rebuild = rebuild === true;
+    if (rebuild ? queryLoading : $('goBtn').disabled) return;
     renderer.closeIntervalData();
     // Keep the previous matrix visible while the next query is in flight.
     controller?.abort();
     renderer.pause();
     queryLoading = true;
     controller = new AbortController();
-    const token = ++generation, selection = chosen(), fixedIds = anchors(selection);
-    const mode = draftMode, dur = draftDur, pairing = pairMode;
+    const token = ++generation, selection = rebuild ? appliedSelection.slice() : chosen(),
+      fixedIds = rebuild ? appliedFixed.slice() : anchors(selection);
+    const mode = rebuild ? appliedMode : draftMode, dur = rebuild ? appliedDur : draftDur,
+      pairing = rebuild ? appliedPairMode : pairMode;
     status(mode === 'charts' ? 'Building frozen summary…' : 'Loading Results…');
     updateControls();
     try {

@@ -83,6 +83,8 @@ const MainCanvas = {
   get pooledCount() { return canvasRenderer?.pooledCount || 0; },
   get chartAllocations() { return canvasRenderer?.chartAllocations || 0; },
   get backingPixels() { return canvasRenderer?.backingPixels || 0; },
+  get previewCount() { return canvasRenderer?.previewCount || 0; },
+  get previewBytes() { return canvasRenderer?.previewBytes || 0; },
   get cacheCount() { return canvasRenderer?.cacheCount || 0; },
   get cacheBytes() { return canvasRenderer?.cacheBytes || 0; },
   get pendingCount() { return canvasRenderer?.pendingCount || 0; },

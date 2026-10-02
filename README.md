@@ -58,6 +58,11 @@ the matrix trial and main page use the same bounded renderer. See the
 [frontend release record](docs/FRONTEND_PUBLIC_RELEASE.md) for deployed
 artifacts, verification and acceptance scope.
 
+Loaded Charts now retain a local lossless preview outside the viewport while
+recycling their live Canvas. First loading remains on-demand; see the
+[retained-chart release record](docs/FRONTEND_RETAINED_CHARTS_REPORT.md) for the
+current build, tests and additional preview-memory trade-off.
+
 The approved frontend upgrade is closed out; long-term full-matrix capacity
 acceptance was explicitly waived by the user, not measured as passing. The
 actual local one-hour gate and finite production observation passed. See the

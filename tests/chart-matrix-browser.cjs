@@ -758,6 +758,7 @@ if (process.env.MATRIX_FIXTURE_ONLY === '1') {
     const retainedCanvas = await page.locator('.card canvas').first().elementHandle();
     const retainedIndex = await retainedCanvas.evaluate(canvas => canvas.closest('.card').dataset.index);
     const firstImage = await page.locator(`.card[data-index="${retainedIndex}"] canvas`).screenshot();
+    const retainedPixels = await retainedCanvas.evaluate(canvas => canvas.toDataURL('image/png'));
     await page.waitForFunction(() => ChartMatrixTrial.instanceCount + ChartMatrixTrial.pooledCount === 4);
     const allocationsBeforeScroll = await page.evaluate(() => ChartMatrixTrial.chartAllocations);
     await page.locator('#mainArea').evaluate(main => { main.scrollTop = main.scrollHeight; });
@@ -766,6 +767,14 @@ if (process.env.MATRIX_FIXTURE_ONLY === '1') {
       'a pooled Canvas should retain its backing store for a later visible route');
     assert.equal(await page.evaluate(() => ChartMatrixTrial.chartAllocations), allocationsBeforeScroll,
       'scrolling should recycle the four existing chart instances');
+    const preview = page.locator(`.card[data-index="${retainedIndex}"] .trial-preview`);
+    await preview.waitFor({ state: 'attached' });
+    assert.match(await preview.getAttribute('src'), /^data:image\/png;base64,/,
+      'a chart leaving the viewport retains its locally encoded picture');
+    assert.equal((await preview.getAttribute('src')) === retainedPixels, true,
+      'the retained preview has exactly the original chart pixels, including axes and loss');
+    assert.equal(await page.locator(`.card[data-index="${retainedIndex}"] .trial-plot`).evaluate(
+      plot => plot.children.length), 1, 'offscreen plot never returns to an empty loading placeholder');
     await page.locator('#mainArea').evaluate(main => { main.scrollTop = 0; });
     await page.waitForFunction(index => document.querySelector(`.card[data-index="${index}"] canvas`), retainedIndex);
     assert.equal((await page.locator(`.card[data-index="${retainedIndex}"] canvas`).screenshot()).equals(firstImage), true,

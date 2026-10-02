@@ -452,6 +452,7 @@ const ChartMatrixTrial = (() => {
   });
   return { get instanceCount() { return renderer.instanceCount; }, get pooledCount() { return renderer.pooledCount; },
     get chartAllocations() { return renderer.chartAllocations; }, get backingPixels() { return renderer.backingPixels; },
+    get previewCount() { return renderer.previewCount; }, get previewBytes() { return renderer.previewBytes; },
     get cacheCount() { return renderer.cacheCount; }, get cacheBytes() { return renderer.cacheBytes; },
     get pendingCount() { return renderer.pendingCount; }, get queryLoading() { return queryLoading; },
     get matrix() { return matrix; }, get mode() { return appliedMode; }, get pairs() { return pairs; },

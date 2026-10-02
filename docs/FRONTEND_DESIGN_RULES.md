@@ -140,6 +140,15 @@ routes; every reassignment must update the frozen-window data, loss marks,
 Y range and size before display. Reusing card DOM or Canvas must never show
 stale series. Leaving Charts or hiding the page destroys idle instances and
 zeros backing stores.
+Scrolling out of view must not blank an already rendered chart: retain a local,
+lossless PNG picture (including axes/loss marks) while recycling its Canvas.
+This is a client-side preview, not `/api/graph.png` fallback. First-time loading
+remains lazy, with four live charts and two concurrent series requests. Preview
+storage is additional to the 16-entry series cache and is limited by the current
+query's route count (at most 500); expose its count/encoded bytes in diagnostics.
+Clear previews when changing query/filter/axis or leaving/hiding Charts so an
+old picture cannot masquerade as the new selection. This memory trade-off is
+not covered by the historical one-hour acceptance report.
 After a WAAPI effect completes, remove its cleanup listeners and cancel the
 finished effect so a detached reveal cover cannot keep a forwards-filled
 animation alive. Its final visual state must already match normal CSS.

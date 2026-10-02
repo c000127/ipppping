@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-02 — Retain Charts pictures outside the viewport
+
+- Retain lossless locally encoded chart previews when recycling offscreen Canvas
+  instances; returning to cached routes does not refetch series. First loading
+  stays lazy; no PNG API fallback or full-matrix request fan-out.
+- Preserve four native chart allocations and two concurrent series requests;
+  expose extra preview storage separately. Clear previews on query/filter/axis
+  replacement and page hiding; never capture an unrendered recycled bitmap.
+- Chrome main/matrix/mobile/surface regression and 101 Python tests pass.
+  Frontend-only production installation retained API identity and old assets;
+  the eight-route public check passed. See [release evidence](FRONTEND_RETAINED_CHARTS_REPORT.md).
+
 ## 2026-10-02 — Migration/reinstallation and private recovery preparation
 
 - Added a Chinese recovery runbook, deployment-state map, encryption/key custody,

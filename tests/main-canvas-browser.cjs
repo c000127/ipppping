@@ -171,6 +171,17 @@ const configure = async settings => { const ready = message('configured'); fixtu
     assert.equal(await page.locator('.card').count(), 480);
     assert.equal(transport.filter(url => url === '/api/v2/summary-batch').length, 15);
     assert.ok(!transport.some(url => /graph.png|\/api\/stats/.test(url)));
+    await page.locator('#mainArea').evaluate(main => { main.scrollTop = 0; });
+    await page.waitForFunction(() => document.querySelector('.card canvas') && MainCanvas.pendingCount === 0);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const originalPlot = await page.locator('.card canvas').first().evaluate(canvas => ({
+      index: canvas.closest('.card').dataset.index, png: canvas.toDataURL('image/png')
+    }));
+    await page.locator('#mainArea').evaluate(main => { main.scrollTop = main.scrollHeight; });
+    const kept = page.locator(`.card[data-index="${originalPlot.index}"] .trial-preview`);
+    await kept.waitFor({ state: 'attached' });
+    assert.equal((await kept.getAttribute('src')) === originalPlot.png, true, 'main Charts retains exact offscreen pixels');
+    assert.ok(await page.evaluate(() => MainCanvas.previewCount > 0 && MainCanvas.previewBytes > 0));
     for (const fraction of [1, .5, 0, 1, 0]) {
       await page.evaluate(f => { const main = document.getElementById('mainArea'); main.scrollTop = (main.scrollHeight - main.clientHeight) * f; }, fraction);
       await page.waitForTimeout(200);
@@ -183,6 +194,8 @@ const configure = async settings => { const ready = message('configured'); fixtu
     });
     assert.equal(await page.locator('canvas').count(), 0);
     assert.equal(await page.evaluate(() => MainCanvas.pooledCount), 0);
+    assert.equal(await page.evaluate(() => MainCanvas.previewCount), 0);
+    assert.equal(await page.locator('.trial-preview').count(), 0, 'hidden page releases its previews');
     await page.evaluate(() => { delete document.hidden; document.dispatchEvent(new Event('visibilitychange')); });
     await page.waitForFunction(() => MainCanvas.instanceCount > 0);
     if (process.env.RUN_AXE) {

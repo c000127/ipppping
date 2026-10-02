@@ -23,6 +23,10 @@ const MatrixRenderer = (() => {
   let matrix = null, pairs = [], items = [], cards = [], generation = 0, frame = 0, observer;
   let active = new Map(), idle = [], chartAllocs = 0, pending = new Map(), near = new Set(), wanted = new Set();
   const chartStates = new WeakMap();
+  // Retain the rendered picture, not a live Canvas, when a route leaves view.
+  // Scoped to one frozen matrix; never used as data for a different query/axis.
+  const previews = new Map();
+  let previewBytes = 0;
   let seriesCache = new Map(), cacheBytes = 0, chartGridColor = null;
   let queryLoading = false, appliedMode = 'charts', unified = false, visibleMax = 1;
   let motionFrame = 0, detailsIndex = null, detailsTrigger = null;
@@ -120,17 +124,37 @@ const MatrixRenderer = (() => {
     for (const chart of idle) destroyChart(chart);
     idle = [];
   }
-  function dispose(index, reuse = true) {
+  function dispose(index, reuse = true, preservePreview = false) {
     cards[index]?.querySelectorAll('.trial-reveal').forEach(cover => {
       cover.getAnimations().forEach(animation => animation.cancel());
     });
     const chart = active.get(index);
     if (chart) {
+      if (preservePreview) rememberPreview(index, chart);
       if (reuse && idle.length < MAX_ACTIVE) idle.push(chart);
       else destroyChart(chart);
     }
     active.delete(index);
-    cards[index]?.querySelector('.trial-plot')?.replaceChildren();
+    const preview = preservePreview && previews.get(index);
+    cards[index]?.querySelector('.trial-plot')?.replaceChildren(...(preview ? [preview.image] : []));
+  }
+  function rememberPreview(index, chart) {
+    // uPlot can defer its first/reassigned draw. Never preserve the default
+    // empty bitmap or a recycled Canvas still showing its preceding route.
+    if (!chartStates.get(chart)?.rendered) return;
+    // Lossless local encoding includes axes and loss marks. No PNG API request,
+    // extra Canvas allocation, animation, or retained series payload is needed.
+    const src = chart.ctx.canvas.toDataURL('image/png');
+    const image = new Image(chart.width, chart.height);
+    image.className = 'trial-preview'; image.alt = ''; image.draggable = false;
+    image.setAttribute('aria-hidden', 'true');
+    image.loading = 'lazy'; image.decoding = 'async'; image.src = src;
+    previewBytes -= previews.get(index)?.bytes || 0;
+    const bytes = src.length * 2;
+    previews.set(index, { image, bytes }); previewBytes += bytes;
+  }
+  function clearPreviews() {
+    previews.clear(); previewBytes = 0;
   }
   function remember(index, value) {
     const bytes = JSON.stringify(value).length * 2;
@@ -228,7 +252,7 @@ const MatrixRenderer = (() => {
         if (peak > mean) lossPeaks.push({ start: c.start[i], end: c.end[i], from: mean, peak });
       } else lossPeaks.push({ start: c.start[i], end: c.end[i], from: 0, peak });
     }
-    const state = { maximum, markColor, lossRuns, lossPeaks };
+    const state = { maximum, markColor, lossRuns, lossPeaks, rendered: false };
     const marks = u => {
       const ctx = u.ctx, px = uPlot.pxRatio || window.devicePixelRatio || 1;
       ctx.save(); ctx.beginPath(); ctx.rect(u.bbox.left, u.bbox.top, u.bbox.width, u.bbox.height); ctx.clip();
@@ -254,6 +278,7 @@ const MatrixRenderer = (() => {
         ctx.fillRect(x, high, width, low - high);
       }
       ctx.restore();
+      state.rendered = true;
     };
     const chartData = [c.end.map((stamp, i) => (c.start[i] + stamp) / 2), c.median_mean_ms,
       c.loss_max_pct.map(value => value > 0 ? value : null)];
@@ -393,7 +418,7 @@ const MatrixRenderer = (() => {
       const indexes = ranked.map(value => value.index);
       if (detailsIndex !== null) indexes.unshift(detailsIndex);
       wanted = new Set([...new Set(indexes)].slice(0, MAX_ACTIVE));
-      for (const index of [...active.keys()]) if (!wanted.has(index)) dispose(index);
+      for (const index of [...active.keys()]) if (!wanted.has(index)) dispose(index, true, true);
       for (const [index, item] of pending) if (!wanted.has(index)) item.abort();
       for (const index of wanted) loadVisible(index);
     });
@@ -421,6 +446,8 @@ const MatrixRenderer = (() => {
     pending.clear();
     for (const index of [...active.keys()]) dispose(index, keepCharts);
     if (!keepCharts) destroyIdle();
+    cards.forEach(card => card?.querySelector('.trial-preview')?.remove());
+    clearPreviews();
     observer?.disconnect(); near.clear(); wanted.clear();
     cancelAnimationFrame(frame); frame = 0;
   }
@@ -452,6 +479,9 @@ const MatrixRenderer = (() => {
   function resume() { queryLoading = false; if (matrix) observe(); }
   function setUnified(value) {
     unified = !!value;
+    // Offscreen previews must not advertise the previous axis configuration.
+    cards.forEach(card => card?.querySelector('.trial-preview')?.remove());
+    clearPreviews();
     for (const index of [...active.keys()]) dispose(index);
     scheduleVisible();
   }
@@ -533,6 +563,7 @@ const MatrixRenderer = (() => {
   return { mount, suspend, pause, reset, resume, setUnified, closeIntervalData, stopMotion, animateVisibleCards, colorLoss, syncControls,
     get instanceCount() { return active.size; }, get pooledCount() { return idle.length; },
     get chartAllocations() { return chartAllocs; },
+    get previewCount() { return previews.size; }, get previewBytes() { return previewBytes; },
     get backingPixels() {
       return [...active.values(), ...idle].reduce((total, chart) =>
         total + [...chart.root.querySelectorAll('canvas')].reduce((sum, canvas) =>

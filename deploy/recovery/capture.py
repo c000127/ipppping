@@ -5,6 +5,7 @@ Requires OpenSSL 3 with CMS AES-GCM, SSH, and Python 3. Remote master needs
 rrdtool. No server encryption key or additional installed daemon is needed.
 """
 import argparse
+import datetime
 import hashlib
 import json
 import os
@@ -102,7 +103,8 @@ def capture(args):
     partial.rename(target)
     with target.open('rb') as stream:
         digest = hashlib.file_digest(stream, 'sha256').hexdigest()
-    print(json.dumps({'archive': str(target), 'bytes': target.stat().st_size, 'sha256': digest}))
+    print(json.dumps({'archive': str(target), 'bytes': target.stat().st_size, 'sha256': digest,
+                      'receivedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}))
 
 
 def verify(args):
@@ -130,7 +132,8 @@ def verify(args):
                     # Keep staging private. Original ownership/modes are in manifest;
                     # no live paths or ownership changes are applied automatically.
                     dest.chmod(0o600)
-        print(json.dumps({'verified': True, **summary, 'stage': str(stage) if stage else None}))
+        print(json.dumps({'verified': True, **summary, 'stage': str(stage) if stage else None,
+                          'verifiedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}))
 
 
 if __name__ == '__main__':

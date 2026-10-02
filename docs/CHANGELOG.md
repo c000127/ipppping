@@ -7,9 +7,14 @@
 - Added SSH-streamed authenticated-encrypted capture, integrity verification,
   safe staged extraction and new-directory RRD restoration tools. No restart,
   production overwrite, backup deletion schedule or server-side SSH key copying.
-- Captured/verified the master (797 round-trip checked RRD exports) and 14/15
-  configured slaves off-host. One unreachable slave remains an explicit gap;
-  master-side history/config is retained. See [the readiness record](RECOVERY_READINESS_REPORT.md).
+- Captured/verified the master (797 round-trip checked RRD exports) and all 15
+  configured slaves off-host, completing the last backup after the user reported
+  node recovery. See [the readiness record](RECOVERY_READINESS_REPORT.md).
+- With separate approval, resynchronized the recovered node's stale clock by
+  restarting only its time-sync service. Advancing real measurements and all
+  42 freshness checks pass; collector and master API identities are unchanged.
+  Kept the original backup timestamps and a new post-correction backup; capture
+  receipts now distinguish operator time from the remote host's clock.
 - Repaired and isolated-container-tested sanitized SmokePing examples, required
   deliberate image pinning and corrected deployment/recovery documentation.
   Docker image layers, provider accounts, full fresh-host/public cutover and

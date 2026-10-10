@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-10-10 — Retire two production nodes
+
+- Removed two retired nodes from the private API list, SmokePing v4/v6
+  targets, all target-to-slave assignments, slave registrations, authentication
+  entries and both operational inventories. Retained historical RRD and private
+  restore copies; no public inventory or credential was added to Git.
+- Preserved the temporarily offline node's registration and targets, and
+  explicitly excluded it from direct synchronization checks. All 12 other
+  slaves loaded the new probe counts through the existing signed protocol;
+  33 representative raw measurements remained valid and fresh.
+- Public `/api/nodes` now contains 14 VPS and six external targets. Validated
+  collector configuration, reloaded its receiver/collector and restarted only
+  the API to load the startup node list; runtime and web bytes are unchanged.
+  See [scoped rollout evidence](NODE_RETIREMENT_20261010.md).
+
 ## 2026-10-03 — Main Charts visibility and recovery
 
 - Explicitly show retained previews despite legacy PNG image opacity rules.
